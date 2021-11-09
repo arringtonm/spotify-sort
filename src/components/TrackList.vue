@@ -1,11 +1,11 @@
 <template>
   <v-container>
     <v-data-table
+      id="tracklist"
       :headers="headers"
       :items="tracks"
       :sort-by="['artist', 'title', 'tempo', 'key']"
-      :items-per-page="150"   
-      class="elevation-1"
+      :items-per-page="300"   
       hide-default-footer
     >
     </v-data-table>
@@ -2139,3 +2139,34 @@
     }),
   }
 </script>
+
+<style lang="scss">
+  #tracklist {
+
+    td {
+      border: none;
+      border-image-width: 0;
+      border-bottom-width: 0;
+    }
+
+    tr:nth-of-type(2n) {
+      background-color: hsl(210, 85%, 95%);
+    }
+
+    th,
+    tr {
+      color: hsl(209, 63%, 24%);
+    }
+
+    tr:hover {
+      background-color: hsl(209, 58%, 36%);
+      color: white;
+    }
+
+    thead *:hover {
+      background-color: white;
+    }
+    
+  }
+
+</style>
