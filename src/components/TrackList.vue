@@ -2141,6 +2141,7 @@
 </script>
 
 <style lang="scss">
+  
   #tracklist {
 
     td {
@@ -2148,25 +2149,35 @@
       border-image-width: 0;
       border-bottom-width: 0;
     }
+    @media screen and (min-width: 600px) {
+      td,
+      th {
+        padding: 0 0.5rem;
+      }
+    }
+
+    td:nth-of-type(3n) {
+      min-width: 6rem;
+    }
+    td:nth-of-type(4n) {
+      min-width: 5rem;
+    }
 
     tr:nth-of-type(2n) {
-      background-color: hsl(210, 85%, 95%);
+      background-color: hsl(209, 85%, 95%);
     }
-
     th,
-    tr {
+    tr,
+    i {
       color: hsl(209, 63%, 24%);
     }
-
     tr:hover {
       background-color: hsl(209, 58%, 36%);
       color: white;
     }
-
     thead *:hover {
       background-color: white;
     }
-    
   }
 
 </style>

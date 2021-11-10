@@ -1,4 +1,6 @@
-# hawksoft-spotify-test
+# Spotify sort table
+
+Quick demonstration of data-heavy display and CSS. Leans heavily on existing Vuetify table component but tidied up visually.
 
 ## Project setup
 ```
