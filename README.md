@@ -1,6 +1,6 @@
 # Spotify sort table
 
-Quick demonstration of data-heavy display and CSS. Leans heavily on existing Vuetify table component but tidied up visually.
+Quick demonstration of data-heavy display and CSS (using some hard-coded Spotify JSON). Leans heavily on existing Vuetify table component but tidied up visually.
 
 ## Project setup
 ```
