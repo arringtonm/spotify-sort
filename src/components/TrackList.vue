@@ -4,8 +4,8 @@
       id="tracklist"
       :headers="headers"
       :items="tracks"
-      :sort-by="['artist', 'title', 'tempo', 'key']"
-      :items-per-page="300"   
+      :sort-by="['artist', 'title', 'tempo', 'key', 'mode']"
+      :items-per-page="1000"   
       hide-default-footer
     >
     </v-data-table>
@@ -15,10 +15,16 @@
 
 <script>
   const tracklist = require('./tracks.json');
+
   export default {
     name: 'TrackList',
     methods: {
      //
+    },
+    computed: {
+        returnCamelot(track) {
+            return track
+        }
     },
     data: () => ({
       pitches: [
@@ -29,11 +35,13 @@
           text: 'Artist',
           align: 'start',
           sortable: true,
-          value: 'artist'
+          value: 'artist',
         },
         { text: 'Title', value: 'title' },
         { text: 'Tempo', value: 'tempo' },
-        { text: 'Key', value: 'key' }
+        { text: 'Key', value: 'key' },
+        { text: 'Mode', value: 'mode' }
+        // { text: 'Mode', value: 'mode' }
       ],
       tracks: tracklist
       })
