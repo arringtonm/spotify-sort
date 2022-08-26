@@ -38,4 +38,4 @@ ___
   - Export additional `JSON` file from project and import it here
   - Filter out songs that are <95bpm and >128bpm 
   - Save new filtered `JSON`
-* Add link to track URL, where URL is `https://open.spotify.com/track/${track.id}`. Might require dumping Vuetify
+* ~~Add link to track URL, where URL is `https://open.spotify.com/track/${track.id}`. Might require dumping Vuetify~~

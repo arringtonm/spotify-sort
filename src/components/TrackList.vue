@@ -8,6 +8,11 @@
       :items-per-page="1000"   
       hide-default-footer
     >
+      <template v-slot:item.title="{ item }">
+        <a target="_blank" :href="`https://open.spotify.com/track/${item.id}`">
+          {{ item.title }}
+        </a>
+      </template>
     </v-data-table>
 
   </v-container>
@@ -63,7 +68,9 @@
         padding: 0 0.5rem;
       }
     }
-
+    a {
+      color: #173e64
+    }
     td:nth-of-type(3n) {
       min-width: 6rem;
     }
@@ -73,6 +80,9 @@
 
     tr:nth-of-type(2n) {
       background-color: hsl(209, 85%, 95%);
+    }
+    tr:nth-of-type(1n):hover a {
+      color: white;
     }
     th,
     tr,
