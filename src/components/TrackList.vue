@@ -11,6 +11,18 @@
         color="hsl(209, 58%, 36%)"
         v-model="selectedPitches"
       />
+      <div>
+        <v-range-slider
+          v-model="tempoRange"
+          hint="Im a hint"
+          max="200"
+          min="60"
+          thumb-label="always"
+          label="BPM Min/Max Range"
+        >
+        </v-range-slider>
+      </div>
+
       <v-data-table
         id="tracklist"
         :headers="headers"
@@ -46,8 +58,11 @@ export default {
     },
     // crude filter by key
     filteredTracks() {
-      return this.tracks.filter((track) =>
-        this.selectedPitches.includes(track.key)
+      return this.tracks.filter(
+        (track) =>
+          this.selectedPitches.includes(track.key) &&
+          track.tempo >= this.tempoRange[0] &&
+          track.tempo <= this.tempoRange[1]
       );
     },
   },
@@ -67,6 +82,7 @@ export default {
       'Bb',
       'B',
     ],
+    tempoRange: [60, 200],
     headers: [
       {
         text: 'Artist',
