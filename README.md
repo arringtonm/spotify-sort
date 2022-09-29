@@ -40,3 +40,4 @@ ___
   - Save new filtered `JSON`
 * ~~Add link to track URL, where URL is `https://open.spotify.com/track/${track.id}`. Might require dumping Vuetify~~
 * ~~Filter by key~~
+* Tempo/BPM filter min/max
