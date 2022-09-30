@@ -47,6 +47,7 @@
             v-model="textSearchQuery"
             label="Artist or song name"
             clearable
+            color="hsl(209, 58%, 36%)"
           ></v-text-field>
         </div>
       </div>
@@ -262,5 +263,9 @@ fieldset {
 
 .v-text-field {
   padding-right: 8px;
+}
+.theme--light.v-text-field > .v-input__control > .v-input__slot:before {
+  border-color: hsl(209, 85%, 95%) !important;
+  border-width: 1px;
 }
 </style>

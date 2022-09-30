@@ -47,5 +47,6 @@ ___
 * Text search to filter by artist/track
   - ~~Basic implementation~~
   - Debounce text search
-  - Fix colors 
+  - ~~Fix bar/border colors~~
+  - Fix text colors 
   - Match both fields 
