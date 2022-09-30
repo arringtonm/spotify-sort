@@ -1,26 +1,49 @@
 <template>
   <div>
     <v-container>
-      <v-checkbox
-        v-for="pitch in pitches"
-        type="checkbox"
-        :value="pitch"
-        :key="pitch"
-        :id="pitch"
-        :label="pitch"
-        color="hsl(209, 58%, 36%)"
-        v-model="selectedPitches"
-      />
-      <div>
-        <v-range-slider
-          v-model="tempoRange"
-          hint="Im a hint"
-          max="200"
-          min="60"
-          thumb-label="always"
-          label="BPM Min/Max Range"
-        >
-        </v-range-slider>
+      <div class="filters-container">
+        <div class="filter">
+          <div v-for="pitch in pitches" :key="pitch" class="checkrow">
+            <v-checkbox
+              type="checkbox"
+              :value="pitch"
+              :key="pitch"
+              :id="pitch"
+              :label="pitch"
+              color="hsl(209, 58%, 36%)"
+              v-model="selectedPitches"
+            />
+            <div class="checkrow-sub">
+              <v-checkbox
+                label="min"
+                color="hsl(209, 58%, 36%)"
+                :disabled="!selectedPitches.includes(pitch)"
+                v-model="selectedPitchModes[pitch]['min']"
+              />
+              <v-checkbox
+                label="maj"
+                color="hsl(209, 58%, 36%)"
+                :disabled="!selectedPitches.includes(pitch)"
+                v-model="selectedPitchModes[pitch]['maj']"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="filter">
+          <v-range-slider
+            v-model="tempoRange"
+            hint="Im a hint"
+            max="180"
+            min="70"
+            thumb-label="always"
+            label="BPM Min/Max Range"
+            track-color="hsl(209, 85%, 95%)"
+            track-fill-color="hsl(209, 58%, 36%"
+            thumb-color="hsl(209, 58%, 36%"
+            color="white"
+          >
+          </v-range-slider>
+        </div>
       </div>
 
       <v-data-table
@@ -61,10 +84,14 @@ export default {
       return this.tracks.filter(
         (track) =>
           this.selectedPitches.includes(track.key) &&
+          this.selectedPitchModes[track.key][track.mode] &&
           track.tempo >= this.tempoRange[0] &&
           track.tempo <= this.tempoRange[1]
       );
     },
+    // showMode(pitch) {
+    //   return this.selectedPitches.includes(pitch);
+    // },
   },
   data: () => ({
     pitches: ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'],
@@ -82,7 +109,21 @@ export default {
       'Bb',
       'B',
     ],
-    tempoRange: [60, 200],
+    selectedPitchModes: {
+      C: { min: true, maj: true },
+      'C#': { min: true, maj: true },
+      D: { min: true, maj: true },
+      Eb: { min: true, maj: true },
+      E: { min: true, maj: true },
+      F: { min: true, maj: true },
+      'F#': { min: true, maj: true },
+      G: { min: true, maj: true },
+      Ab: { min: true, maj: true },
+      A: { min: true, maj: true },
+      Bb: { min: true, maj: true },
+      B: { min: true, maj: true },
+    },
+    tempoRange: [90, 130],
     headers: [
       {
         text: 'Artist',
@@ -144,17 +185,62 @@ export default {
   }
 }
 
+label.v-label {
+  min-width: 2.5ch;
+}
+
 fieldset {
   border: none;
   margin-left: 16px;
 }
 
-.v-input {
-  margin: 0 !important;
+.v-input--checkbox {
+  margin-top: 0 !important;
   padding-top: 0;
-  // line-height: 1;
+  padding-bottom: 0;
+  margin-bottom: -8px;
+}
+
+.v-input__slider {
+  margin: 2rem 0 1rem;
 }
 .v-messages {
   display: none;
+}
+
+.checkrow {
+  display: flex;
+  flex-direction: row;
+}
+.checkrow-sub {
+  display: flex;
+  // flex-direction: column;
+  align-self: end;
+  margin-left: 8px;
+  label {
+    min-width: 4ch;
+  }
+}
+
+.theme--light.v-input--is-disabled {
+  // .theme--light.v-label--is-disabled {
+  color: hsl(209, 85%, 95%) !important;
+}
+
+.filters-container {
+  display: flex;
+  flex-direction: row;
+}
+.filter {
+  width: auto;
+}
+.filter:nth-of-type(2) {
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  align-content: center;
+  align-self: center;
+  // padding: 16px;
+  margin-left: 64px;
 }
 </style>

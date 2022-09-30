@@ -41,3 +41,6 @@ ___
 * ~~Add link to track URL, where URL is `https://open.spotify.com/track/${track.id}`. Might require dumping Vuetify~~
 * ~~Filter by key~~
 * Tempo/BPM filter min/max
+  - ~~Add Slider component and connect to filter logic~~
+  - ~~Match colors of slider~~
+  - Adjust behavior of filtering to not reorder existing 'sort by' method
