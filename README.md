@@ -44,3 +44,8 @@ ___
   - ~~Add Slider component and connect to filter logic~~
   - ~~Match colors of slider~~
   - Adjust behavior of filtering to not reorder existing 'sort by' method
+* Text search to filter by artist/track
+  - ~~Basic implementation~~
+  - Debounce text search
+  - Fix colors 
+  - Match both fields 

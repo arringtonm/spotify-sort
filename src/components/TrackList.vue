@@ -43,6 +43,11 @@
             color="white"
           >
           </v-range-slider>
+          <v-text-field
+            v-model="textSearchQuery"
+            label="Artist or song name"
+            clearable
+          ></v-text-field>
         </div>
       </div>
 
@@ -86,9 +91,18 @@ export default {
           this.selectedPitches.includes(track.key) &&
           this.selectedPitchModes[track.key][track.mode] &&
           track.tempo >= this.tempoRange[0] &&
-          track.tempo <= this.tempoRange[1]
+          track.tempo <= this.tempoRange[1] &&
+          (track.title.includes(this.textSearchFilter) ||
+            track.artist.includes(this.textSearchFilter))
       );
     },
+    textSearchFilter() {
+      if (this.textSearchQuery.length) {
+        return this.textSearchQuery;
+      }
+      return '';
+    },
+
     // showMode(pitch) {
     //   return this.selectedPitches.includes(pitch);
     // },
@@ -124,6 +138,7 @@ export default {
       B: { min: true, maj: true },
     },
     tempoRange: [90, 130],
+    textSearchQuery: '',
     headers: [
       {
         text: 'Artist',
@@ -237,10 +252,15 @@ fieldset {
 .filter:nth-of-type(2) {
   flex-grow: 1;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-content: center;
   align-self: center;
   // padding: 16px;
   margin-left: 64px;
+}
+
+.v-text-field {
+  padding-right: 8px;
 }
 </style>
