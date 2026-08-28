@@ -1,7 +1,9 @@
 import { resolve as resolveDeezer } from './deezer.js';
-import { getMany, putEntry } from './cache.js';
+import { getMany, putEntry } from './db.js';
 import { displayName } from '../lib/musicalKey.js';
 import { createWorkerPool } from './workerPool.js';
+
+export { getMany, putEntry };
 
 /**
  * Fills in tempo and key for tracks that arrive from Spotify without either,
@@ -56,7 +58,7 @@ async function decodePreview(url) {
   return { channels, length: buffer.length, sampleRate: buffer.sampleRate };
 }
 
-async function enrichOne(track) {
+export async function analyseTrack(track) {
   const match = await resolveDeezer(track);
   if (!match) return { id: track.id, status: 'no-match', enrichedAt: Date.now() };
 
@@ -90,42 +92,6 @@ async function enrichOne(track) {
       ? { ...base, status: 'partial', tempo: match.bpm, tempoSource: 'deezer' }
       : { ...base, status: 'failed', error: String(error?.message || error) };
   }
-}
-
-/**
- * Enrich a list of tracks, skipping anything already cached.
- * `onProgress({done, total, track, entry})` fires after each track.
- */
-export async function enrichTracks(tracks, { onProgress, signal } = {}) {
-  const cached = await getMany(tracks.map((t) => t.id));
-  const todo = tracks.filter((t) => !cached.has(t.id));
-  const results = new Map(cached);
-
-  let done = tracks.length - todo.length;
-  onProgress?.({ done, total: tracks.length });
-
-  let cursor = 0;
-  async function pump() {
-    while (cursor < todo.length) {
-      if (signal?.aborted) return;
-      const track = todo[cursor];
-      cursor += 1;
-      let entry;
-      try {
-        entry = await enrichOne(track);
-      } catch (error) {
-        entry = { id: track.id, status: 'failed', error: String(error?.message || error) };
-      }
-      await putEntry(entry).catch(() => {});
-      results.set(track.id, entry);
-      done += 1;
-      onProgress?.({ done, total: tracks.length, track, entry });
-    }
-  }
-
-  const lanes = Math.min(getPool().target + 2, Math.max(1, todo.length));
-  await Promise.all(Array.from({ length: lanes }, pump));
-  return results;
 }
 
 /**

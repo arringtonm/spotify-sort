@@ -110,3 +110,19 @@ test('search still applies to tracks with unknown tempo', () => {
   assert.equal(filterTracks(pool, { ...base(), query: 'daft' }).length, 1);
   assert.equal(filterTracks(pool, { ...base(), query: 'zzz' }).length, 0);
 });
+
+test('tempoBounds handles a very large library without spreading', () => {
+  // Math.min(...arr) throws RangeError somewhere past ~150k arguments.
+  const huge = Array.from({ length: 200_000 }, (_, i) => ({ tempo: 60 + (i % 150) }));
+  assert.doesNotThrow(() => tempoBounds(huge));
+  assert.deepEqual(tempoBounds(huge), { min: 60, max: 209 });
+});
+
+test('tempoBounds ignores null and non-finite tempos', () => {
+  assert.deepEqual(
+    tempoBounds([{ tempo: null }, { tempo: 120 }, { tempo: NaN }, { tempo: 90 }]),
+    { min: 90, max: 120 }
+  );
+  assert.deepEqual(tempoBounds([{ tempo: null }]), { min: 0, max: 0 });
+  assert.deepEqual(tempoBounds([]), { min: 0, max: 0 });
+});

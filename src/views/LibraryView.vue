@@ -52,8 +52,12 @@ export default {
     },
   },
 
-  created() {
-    this.overrides.load();
+  async created() {
+    await this.overrides.load();
+    // Load whatever is stored on this device. Without this the app fell back to
+    // the bundled sample on every reload.
+    await this.library.hydrate();
+    this.filters.resetBounds();
   },
 };
 </script>

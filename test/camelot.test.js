@@ -7,6 +7,8 @@ import {
   keyInfo,
   tempoRelation,
   buildSet,
+  ALL_CAMELOT_CODES,
+  fromCamelotCode,
 } from '../src/lib/camelot.js';
 import { toPitchClass } from '../src/lib/musicalKey.js';
 
@@ -166,4 +168,24 @@ test('sets built from the real catalogue are harmonically valid end to end', asy
       );
     }
   }
+});
+
+test('fromCamelotCode round-trips every wheel position', () => {
+  assert.equal(ALL_CAMELOT_CODES.length, 24);
+  for (const code of ALL_CAMELOT_CODES) {
+    const parsed = fromCamelotCode(code);
+    assert.ok(parsed, `${code} should parse`);
+    assert.equal(camelotCode(parsed.pitchClass, parsed.mode), code, `${code} round-trip`);
+  }
+});
+
+test('fromCamelotCode rejects nonsense without throwing', () => {
+  for (const bad of [null, undefined, '', '0A', '13B', 'C', '8C', 'abc', 8]) {
+    assert.equal(fromCamelotCode(bad), null, `${bad} should be null`);
+  }
+});
+
+test('8B is C major and 8A is A minor', () => {
+  assert.deepEqual(fromCamelotCode('8B'), { pitchClass: 0, mode: 'maj' });
+  assert.deepEqual(fromCamelotCode('8a'), { pitchClass: 9, mode: 'min' });
 });

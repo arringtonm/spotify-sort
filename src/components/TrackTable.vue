@@ -1,13 +1,20 @@
 <template>
-  <v-data-table
+  <!--
+    Virtualised on purpose. The previous `:items-per-page="-1"` put every row in the
+    DOM: 1,065 tracks became 31,989 elements and 3,195 button components, and any
+    filter change cost ~350ms to repaint. Only the visible window is rendered now.
+  -->
+  <v-data-table-virtual
     id="tracklist"
     :headers="visibleHeaders"
     :items="rows"
     :sort-by="sortBy"
-    :items-per-page="-1"
+    :height="tableHeight"
+    :item-height="40"
+    :row-props="rowProps"
     multi-sort
-    hide-default-footer
     density="compact"
+    fixed-header
   >
     <template #[`item.position`]="{ item }">
       <span class="position">{{ item.position }}</span>
@@ -62,10 +69,11 @@
       >{{ item.relation === 'half' ? '½×' : '2×' }}</span>
     </template>
 
-    <template #[`item.key`]="{ item }">
-      <span :class="{ 'is-unknown': !item.key, 'is-uncertain': isUncertain(item) }">
-        {{ item.key || '—' }}
-      </span>
+    <template #[`item.camelot`]="{ item }">
+      <span
+        :class="{ 'is-unknown': !codeFor(item), 'is-uncertain': isUncertain(item) }"
+        :title="item.key ? `${item.key} ${item.mode === 'maj' ? 'major' : 'minor'}` : ''"
+      >{{ codeFor(item) || '—' }}</span>
       <span
         v-if="item.keySource === 'manual'"
         class="badge"
@@ -82,9 +90,6 @@
       >{{ isUncertain(item) ? '?' : '~' }}</span>
     </template>
 
-    <template #[`item.camelot`]="{ item }">
-      {{ codeFor(item) || '—' }}
-    </template>
 
     <template #[`item.durationMs`]="{ item }">
       <span :class="{ 'is-unknown': !item.durationMs }">
@@ -125,7 +130,7 @@
         </v-btn>
       </div>
     </template>
-  </v-data-table>
+  </v-data-table-virtual>
 </template>
 
 <script>
@@ -162,9 +167,16 @@ export default {
 
   data: () => ({
     userSortBy: [{ key: 'artist', order: 'asc' }],
+    viewportHeight: typeof window === 'undefined' ? 900 : window.innerHeight,
   }),
 
+
   computed: {
+    /** Fill the viewport rather than hard-coding a height. */
+    tableHeight() {
+      return Math.max(320, Math.round(this.viewportHeight * 0.62));
+    },
+
     sortBy() {
       return this.ordered ? [{ key: 'position', order: 'asc' }] : this.userSortBy;
     },
@@ -178,17 +190,47 @@ export default {
         { title: 'Title', key: 'title', sortable },
         this.hasGenres && { title: 'Genre', key: 'genres', sortable: false },
         { title: 'Tempo', key: 'tempo', sortable },
-        { title: 'Key', key: 'key', sortable },
-        { title: 'Mode', key: 'mode', sortable },
-        { title: 'Camelot', key: 'camelot', sortable: false },
+        // One key column, in Camelot. Note name stays available on hover.
+        // Sorted numerically by wheel position — lexically, 10A precedes 2A.
+        { title: 'Key', key: 'camelot', sortable, sortRaw: this.compareCamelot },
         { title: 'Length', key: 'durationMs', sortable },
         { title: '', key: 'actions', sortable: false, align: 'end', width: 140 },
       ].filter(Boolean);
     },
   },
 
+  mounted() {
+    this.onResize = () => {
+      this.viewportHeight = window.innerHeight;
+    };
+    window.addEventListener('resize', this.onResize);
+  },
+
+  beforeUnmount() {
+    window.removeEventListener('resize', this.onResize);
+  },
+
   methods: {
     formatDuration,
+
+    /**
+     * Striping has to come from the real row index. With virtualisation,
+     * `tr:nth-of-type(even)` counts only the rendered window, so the stripes
+     * shifted under the content as you scrolled.
+     */
+    rowProps({ index }) {
+      return { class: index % 2 === 1 ? 'row--alt' : null };
+    },
+
+    /** Order round the wheel: 1A..12A then 1B..12B; unknown keys last. */
+    compareCamelot(a, b) {
+      const rank = (track) => {
+        const code = this.codeFor(track);
+        if (!code) return Number.MAX_SAFE_INTEGER;
+        return Number(code.slice(0, -1)) * 2 + (code.slice(-1) === 'B' ? 1 : 0);
+      };
+      return rank(a) - rank(b);
+    },
     codeFor(track) {
       return camelotCode(trackPitchClass(track), track.mode);
     },
@@ -256,7 +298,7 @@ export default {
     }
   }
 
-  :deep(tbody tr:nth-of-type(even)) {
+  :deep(tbody tr.row--alt) {
     background-color: rgb(var(--v-theme-pale));
   }
 

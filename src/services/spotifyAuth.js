@@ -81,11 +81,53 @@ export function isLoggedIn() {
 }
 
 /**
+ * Everything needed to diagnose a redirect-URI mismatch, which is by far the most
+ * common way this flow fails.
+ *
+ * The subtle one is the origin check. The PKCE verifier and CSRF state live in
+ * sessionStorage, which is per-origin — and `http://localhost:5173` and
+ * `http://127.0.0.1:5173` are *different origins*. Browse to one while the
+ * redirect URI points at the other and Spotify will happily authorise you, then
+ * bounce you to an origin where the verifier does not exist, failing at the last
+ * step with a confusing "missing PKCE verifier".
+ */
+export function redirectDiagnostics() {
+  const currentOrigin = window.location.origin;
+  let registeredOrigin = null;
+  try {
+    registeredOrigin = new URL(REDIRECT_URI).origin;
+  } catch {
+    /* malformed or unset */
+  }
+  return {
+    redirectUri: REDIRECT_URI,
+    currentOrigin,
+    registeredOrigin,
+    originMatches: registeredOrigin === currentOrigin,
+    browsingLocalhost: currentOrigin.includes('localhost'),
+  };
+}
+
+/**
  * Build the consent-screen URL and stash the PKCE verifier and state.
  * Separated from `login()` so it can be asserted on without navigating.
  */
 export async function buildAuthorizeUrl() {
   if (!CLIENT_ID) throw new Error('VITE_SPOTIFY_CLIENT_ID is not set — copy .env.example to .env');
+  if (!REDIRECT_URI) throw new Error('VITE_SPOTIFY_REDIRECT_URI is not set');
+
+  const diagnostics = redirectDiagnostics();
+  if (!diagnostics.originMatches) {
+    throw new Error(
+      `You are browsing ${diagnostics.currentOrigin} but the redirect URI is ` +
+        `${diagnostics.redirectUri}. Those are different origins, so the sign-in would ` +
+        `lose its PKCE verifier on the way back. Open the app at ` +
+        `${diagnostics.registeredOrigin} instead` +
+        (diagnostics.browsingLocalhost
+          ? ' — Spotify does not accept `localhost`, so 127.0.0.1 is the one to use.'
+          : '.')
+    );
+  }
 
   const verifier = randomString();
   const state = randomString(16);

@@ -19,21 +19,9 @@
 
         <div class="fields">
           <v-select
-            v-model="key"
-            :items="pitchOptions"
-            label="Key"
-            variant="outlined"
-            density="compact"
-            clearable
-            hide-details
-          />
-          <v-select
-            v-model="mode"
-            :items="[
-              { title: 'major', value: 'maj' },
-              { title: 'minor', value: 'min' },
-            ]"
-            label="Mode"
+            v-model="camelot"
+            :items="camelotOptions"
+            label="Key (Camelot)"
             variant="outlined"
             density="compact"
             clearable
@@ -86,9 +74,13 @@
 </template>
 
 <script>
-import { PITCHES } from '../lib/tracks.js';
-import { camelotCode } from '../lib/camelot.js';
-import { toPitchClass } from '../lib/musicalKey.js';
+import {
+  camelotCode,
+  trackPitchClass,
+  ALL_CAMELOT_CODES,
+  fromCamelotCode,
+} from '../lib/camelot.js';
+import { displayName } from '../lib/musicalKey.js';
 import { useOverridesStore } from '../stores/overrides.js';
 
 export default {
@@ -98,21 +90,29 @@ export default {
   },
   emits: ['close'],
   setup() {
-    return { overrides: useOverridesStore(), pitchOptions: PITCHES };
+    return {
+      overrides: useOverridesStore(),
+      // Ordered round the wheel so neighbours sit together in the list.
+      camelotOptions: ALL_CAMELOT_CODES.slice().sort(
+        (a, b) =>
+          Number(a.slice(0, -1)) - Number(b.slice(0, -1)) || a.slice(-1).localeCompare(b.slice(-1))
+      ),
+    };
   },
-  data: () => ({ key: null, mode: null, tempo: null }),
+  data: () => ({ camelot: null, tempo: null }),
   computed: {
+    /** Spell out the note name, since Camelot alone is opaque if you are unsure. */
     preview() {
-      if (!this.key || !this.mode) return null;
-      return camelotCode(toPitchClass(this.key), this.mode);
+      const parsed = fromCamelotCode(this.camelot);
+      if (!parsed) return null;
+      return `${displayName(parsed.pitchClass)} ${parsed.mode === 'maj' ? 'major' : 'minor'}`;
     },
   },
   watch: {
     track: {
       immediate: true,
       handler(track) {
-        this.key = track?.key ?? null;
-        this.mode = track?.mode ?? null;
+        this.camelot = track ? camelotCode(trackPitchClass(track), track.mode) : null;
         this.tempo = track?.tempo ?? null;
       },
     },
@@ -122,9 +122,10 @@ export default {
       this.$emit('close');
     },
     async save() {
+      const parsed = fromCamelotCode(this.camelot);
       await this.overrides.set(this.track.id, {
-        key: this.key,
-        mode: this.mode,
+        key: parsed ? displayName(parsed.pitchClass) : null,
+        mode: parsed ? parsed.mode : null,
         tempo: this.tempo,
       });
       this.close();

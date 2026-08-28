@@ -15,9 +15,18 @@ export function allPitchModes() {
  * tracks could never be selected.
  */
 export function tempoBounds(tracks) {
-  if (!tracks.length) return { min: 0, max: 0 };
-  const tempos = tracks.map((track) => track.tempo);
-  return { min: Math.floor(Math.min(...tempos)), max: Math.ceil(Math.max(...tempos)) };
+  let min = Infinity;
+  let max = -Infinity;
+  // A loop rather than Math.min(...tempos): spreading throws RangeError somewhere
+  // past ~150k arguments, and a Rekordbox collection can reach that.
+  for (const track of tracks) {
+    const tempo = track.tempo;
+    if (tempo == null || !Number.isFinite(tempo)) continue;
+    if (tempo < min) min = tempo;
+    if (tempo > max) max = tempo;
+  }
+  if (min === Infinity) return { min: 0, max: 0 };
+  return { min: Math.floor(min), max: Math.ceil(max) };
 }
 
 /** Normalise the search box value: `clearable` emits null, not ''. */

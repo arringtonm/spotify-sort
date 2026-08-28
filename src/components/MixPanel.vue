@@ -11,9 +11,11 @@
           {{ filters.seedTrack.artist }} — {{ filters.seedTrack.title }}
         </strong>
         <span class="seed__meta">
-          {{ formatTempo(filters.seedTrack.tempo) }} BPM ·
-          {{ filters.seedTrack.key }}{{ filters.seedTrack.mode }}
-          <template v-if="seedCode"> · {{ seedCode }}</template>
+          {{ formatTempo(filters.seedTrack.tempo) }} BPM
+          <template v-if="seedCode">
+            · <strong>{{ seedCode }}</strong>
+            <span class="seed__note">({{ noteName }})</span>
+          </template>
         </span>
         <span class="seed__meta">
           <template v-if="filters.setMode">
@@ -134,6 +136,11 @@ export default {
       const seed = this.filters.seedTrack;
       return seed ? camelotCode(trackPitchClass(seed), seed.mode) : null;
     },
+    noteName() {
+      const seed = this.filters.seedTrack;
+      if (!seed?.key) return '';
+      return `${seed.key} ${seed.mode === 'maj' ? 'major' : 'minor'}`;
+    },
     directionLabel() {
       return { 1: 'building tempo', 0: 'holding tempo', '-1': 'winding down' }[
         String(this.filters.setDirection)
@@ -168,6 +175,10 @@ export default {
   display: block;
   font-size: 0.8125rem;
   opacity: 0.8;
+}
+
+.seed__note {
+  opacity: 0.7;
 }
 
 .seed__warn {

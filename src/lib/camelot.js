@@ -119,3 +119,24 @@ export function buildSet(tracks, seed, { length = 10, bpmTolerance = 3, directio
 
   return path;
 }
+
+
+/** Every wheel position: 1A-12A (minor) then 1B-12B (major). */
+export const ALL_CAMELOT_CODES = [
+  ...Array.from({ length: 12 }, (_, i) => `${i + 1}A`),
+  ...Array.from({ length: 12 }, (_, i) => `${i + 1}B`),
+];
+
+/**
+ * Parse a wheel position back to pitch class and mode.
+ * 8B is C major by definition; each clockwise step is a perfect fifth (+7 semitones).
+ */
+export function fromCamelotCode(code) {
+  const match = String(code ?? '').trim().match(/^(\d{1,2})([AB])$/i);
+  if (!match) return null;
+  const position = Number(match[1]);
+  if (position < 1 || position > 12) return null;
+  const mode = match[2].toUpperCase() === 'B' ? 'maj' : 'min';
+  const base = mode === 'maj' ? 0 : 9;
+  return { pitchClass: ((((position - 8) * 7) % 12) + 12 + base) % 12, mode };
+}

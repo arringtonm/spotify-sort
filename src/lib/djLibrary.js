@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { toPitchClass, displayName, normaliseMode } from './musicalKey.js';
+import { fromCamelotCode } from './camelot.js';
 
 /**
  * Importers for DJ software collections.
@@ -27,15 +28,8 @@ export function fromRekordboxKey(tonality) {
   if (!tonality) return { pitchClass: null, mode: null };
   const text = String(tonality).trim();
 
-  const camelot = text.match(/^(\d{1,2})([AB])$/i);
-  if (camelot) {
-    const position = Number(camelot[1]);
-    const mode = camelot[2].toUpperCase() === 'B' ? 'maj' : 'min';
-    // Camelot 8B = C major; each step clockwise is a perfect fifth (+7 semitones).
-    const base = mode === 'maj' ? 0 : 9;
-    const pitchClass = (((position - 8) * 7) % 12 + 12 + base) % 12;
-    return { pitchClass, mode };
-  }
+  const camelot = fromCamelotCode(text);
+  if (camelot) return camelot;
 
   const named = text.match(/^([A-G][#b]?)\s*(m|min|minor|maj|major)?$/i);
   if (!named) return { pitchClass: null, mode: null };

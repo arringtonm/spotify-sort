@@ -1,38 +1,58 @@
 <template>
   <div class="filters">
     <div class="filters__keys">
-      <div
-        v-for="pitch in filters.PITCHES"
-        :key="pitch"
-        class="checkrow"
-      >
-        <v-checkbox
-          v-model="filters.selectedPitches"
-          :label="pitch"
-          :value="pitch"
-          :disabled="Boolean(filters.seedTrack)"
-          color="primary"
-          density="compact"
-          hide-details
-        />
-        <div class="checkrow__modes">
-          <v-checkbox
-            v-for="mode in filters.MODES"
-            :key="mode"
-            v-model="filters.selectedPitchModes[pitch][mode]"
-            :label="mode"
-            :disabled="Boolean(filters.seedTrack) || !filters.selectedPitches.includes(pitch)"
-            color="primary"
-            density="compact"
-            hide-details
-          />
+      <div class="wheel">
+        <div
+          v-for="letter in ['A', 'B']"
+          :key="letter"
+          class="wheel__row"
+        >
+          <span class="wheel__label">{{ letter === 'A' ? 'min' : 'maj' }}</span>
+          <button
+            v-for="position in 12"
+            :key="`${position}${letter}`"
+            type="button"
+            class="chip"
+            :class="{
+              'chip--on': filters.selectedCodes.includes(`${position}${letter}`),
+              'chip--disabled': Boolean(filters.seedTrack),
+            }"
+            :disabled="Boolean(filters.seedTrack)"
+            @click="filters.toggleCode(`${position}${letter}`)"
+          >
+            {{ position }}{{ letter }}
+          </button>
         </div>
+      </div>
+
+      <div class="wheel__actions">
+        <v-btn
+          variant="text"
+          size="x-small"
+          :disabled="Boolean(filters.seedTrack) || filters.allKeysSelected"
+          @click="filters.selectAllKeys()"
+        >
+          All
+        </v-btn>
+        <v-btn
+          variant="text"
+          size="x-small"
+          :disabled="Boolean(filters.seedTrack) || !filters.selectedCodes.length"
+          @click="filters.clearKeys()"
+        >
+          None
+        </v-btn>
       </div>
     </div>
 
     <div class="filters__range">
+      <!--
+        The slider drives a local draft so the thumbs track the pointer at full
+        frame rate. Filtering only runs once the drag ends — committing on every
+        pointer move re-filtered and repainted the whole table mid-gesture.
+      -->
       <v-range-slider
-        v-model="filters.tempoRange"
+        v-model="tempoDraft"
         :min="filters.bpmMin"
         :max="filters.bpmMax"
         :step="1"
@@ -42,6 +62,7 @@
         color="primary"
         track-color="pale"
         hide-details
+        @end="commitTempo"
       />
 
       <div class="filters__row">
@@ -95,6 +116,7 @@ import { useFiltersStore } from '../stores/filters.js';
 import { useLibraryStore } from '../stores/library.js';
 
 const DEBOUNCE_MS = 200;
+const TEMPO_SETTLE_MS = 180;
 
 export default {
   name: 'TrackFilters',
@@ -103,10 +125,14 @@ export default {
     return { filters: useFiltersStore(), library: useLibraryStore() };
   },
 
-  data: () => ({
-    searchInput: '',
-    timer: null,
-  }),
+  data() {
+    return {
+      searchInput: '',
+      timer: null,
+      tempoTimer: null,
+      tempoDraft: [...this.filters.tempoRange],
+    };
+  },
 
   watch: {
     /**
@@ -120,10 +146,40 @@ export default {
         this.filters.query = value || '';
       }, DEBOUNCE_MS);
     },
+
+    /**
+     * Backstop for input that never fires `@end` — arrow keys, or the range being
+     * reset programmatically after an import.
+     */
+    tempoDraft(value) {
+      clearTimeout(this.tempoTimer);
+      this.tempoTimer = setTimeout(() => this.commitTempo(value), TEMPO_SETTLE_MS);
+    },
+
+    /** Keep the draft in step when the store changes the range itself. */
+    'filters.tempoRange': {
+      handler(value) {
+        if (value[0] !== this.tempoDraft[0] || value[1] !== this.tempoDraft[1]) {
+          this.tempoDraft = [...value];
+        }
+      },
+    },
   },
 
   beforeUnmount() {
     clearTimeout(this.timer);
+    clearTimeout(this.tempoTimer);
+  },
+
+  methods: {
+    commitTempo(value) {
+      clearTimeout(this.tempoTimer);
+      const next = value ?? this.tempoDraft;
+      if (next[0] === this.filters.tempoRange[0] && next[1] === this.filters.tempoRange[1]) {
+        return;
+      }
+      this.filters.tempoRange = [...next];
+    },
   },
 };
 </script>
@@ -173,19 +229,58 @@ export default {
   opacity: 0.8;
 }
 
-.checkrow {
+.wheel {
   display: flex;
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.375rem;
 }
 
-.checkrow__modes {
+.wheel__row {
   display: flex;
-  margin-left: 0.5rem;
+  align-items: center;
+  gap: 0.25rem;
+}
 
-  :deep(.v-label) {
-    min-width: 4ch;
+.wheel__label {
+  width: 2.25rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  color: rgb(var(--v-theme-ink));
+}
+
+.wheel__actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  margin-left: 2.25rem;
+}
+
+.chip {
+  min-width: 2.5rem;
+  padding: 0.25rem 0;
+  border: 1px solid rgb(var(--v-theme-pale));
+  border-radius: 4px;
+  background: transparent;
+  color: rgb(var(--v-theme-ink));
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+
+  &:hover:not(.chip--disabled) {
+    border-color: rgb(var(--v-theme-primary));
   }
+}
+
+.chip--on {
+  background: rgb(var(--v-theme-primary));
+  border-color: rgb(var(--v-theme-primary));
+  color: #fff;
+}
+
+.chip--disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 :deep(.v-selection-control) {

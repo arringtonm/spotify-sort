@@ -1,14 +1,21 @@
 import { defineStore } from 'pinia';
-import { PITCHES, MODES, allPitchModes, tempoBounds, filterTracks } from '../lib/tracks.js';
-import { compatibleTracks, buildSet, tempoRelation } from '../lib/camelot.js';
+import { PITCHES, allPitchModes, tempoBounds, filterTracks } from '../lib/tracks.js';
+import {
+  compatibleTracks,
+  buildSet,
+  tempoRelation,
+  ALL_CAMELOT_CODES,
+  fromCamelotCode,
+} from '../lib/camelot.js';
+import { displayName } from '../lib/musicalKey.js';
 import { useLibraryStore } from './library.js';
 
 export const useFiltersStore = defineStore('filters', {
   state: () => ({
-    PITCHES,
-    MODES,
-    selectedPitches: [...PITCHES],
-    selectedPitchModes: allPitchModes(),
+    // Camelot is the source of truth for key selection. DJs read 8A, not
+    // "A minor", and one wheel position replaces a pitch checkbox plus a
+    // mode checkbox — 24 controls become 24 single-click chips.
+    selectedCodes: [...ALL_CAMELOT_CODES],
     tempoRange: [90, 130],
     query: '',
     genre: null,
@@ -21,6 +28,29 @@ export const useFiltersStore = defineStore('filters', {
   }),
 
   getters: {
+    /** filterTracks still works in pitch/mode; translate at the boundary. */
+    selectedPitches() {
+      const names = new Set();
+      this.selectedCodes.forEach((code) => {
+        const parsed = fromCamelotCode(code);
+        if (parsed) names.add(displayName(parsed.pitchClass));
+      });
+      return [...names];
+    },
+
+    selectedPitchModes() {
+      const map = Object.fromEntries(PITCHES.map((p) => [p, { min: false, maj: false }]));
+      this.selectedCodes.forEach((code) => {
+        const parsed = fromCamelotCode(code);
+        if (parsed) map[displayName(parsed.pitchClass)][parsed.mode] = true;
+      });
+      return map;
+    },
+
+    allKeysSelected() {
+      return this.selectedCodes.length === ALL_CAMELOT_CODES.length;
+    },
+
     bounds() {
       const library = useLibraryStore();
       return tempoBounds(library.tracks.filter((t) => t.tempo != null));
@@ -102,19 +132,29 @@ export const useFiltersStore = defineStore('filters', {
           });
     },
 
-    unknownCount() {
+    /** One pass for all three tallies — this used to walk the library three times. */
+    counts() {
       const library = useLibraryStore();
-      return library.tracks.filter((t) => t.tempo == null || t.key == null).length;
+      let unknown = 0;
+      let estimated = 0;
+      let uncertain = 0;
+      for (const track of library.tracks) {
+        if (track.tempo == null || track.key == null) unknown += 1;
+        if (track.keySource === 'analysis') {
+          estimated += 1;
+          if (track.keyConfident === false) uncertain += 1;
+        }
+      }
+      return { unknown, estimated, uncertain };
+    },
+    unknownCount() {
+      return this.counts.unknown;
     },
     estimatedCount() {
-      const library = useLibraryStore();
-      return library.tracks.filter((t) => t.keySource === 'analysis').length;
+      return this.counts.estimated;
     },
     uncertainCount() {
-      const library = useLibraryStore();
-      return library.tracks.filter(
-        (t) => t.keySource === 'analysis' && t.keyConfident === false
-      ).length;
+      return this.counts.uncertain;
     },
   },
 
@@ -130,6 +170,35 @@ export const useFiltersStore = defineStore('filters', {
       this.tempoRange = [this.bpmMin, this.bpmMax];
       this.clearSeed();
       this.genre = null;
+    },
+
+    toggleCode(code) {
+      this.selectedCodes = this.selectedCodes.includes(code)
+        ? this.selectedCodes.filter((c) => c !== code)
+        : [...this.selectedCodes, code];
+    },
+
+    selectAllKeys() {
+      this.selectedCodes = [...ALL_CAMELOT_CODES];
+    },
+
+    clearKeys() {
+      this.selectedCodes = [];
+    },
+
+    /** Select the seed's key and its harmonic neighbours — the usual starting point. */
+    selectCompatibleWith(code) {
+      const parsed = fromCamelotCode(code);
+      if (!parsed) return;
+      const position = Number(code.slice(0, -1));
+      const letter = code.slice(-1).toUpperCase();
+      const wrap = (n) => ((n - 1 + 12) % 12) + 1;
+      this.selectedCodes = [
+        code,
+        `${wrap(position - 1)}${letter}`,
+        `${wrap(position + 1)}${letter}`,
+        `${position}${letter === 'A' ? 'B' : 'A'}`,
+      ];
     },
   },
 });

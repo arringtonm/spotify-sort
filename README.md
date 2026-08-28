@@ -91,13 +91,39 @@ survive re-imports and analyser upgrades.
 - **Cache entries are versioned.** Each carries the `ANALYZER_VERSION` that produced it;
   bumping it transparently recomputes rather than serving stale numbers forever.
 - **Preview URLs are signed and short-lived**, so they are fetched at press time.
+- **The table is virtualised.** Rendering every row put 1,065 tracks into the DOM as
+  ~32,000 elements and 3,195 button components, costing ~350ms to repaint on any filter
+  change. Only the visible window renders now — ~13 rows, ~370 elements, ~33ms.
+- **The BPM slider commits on release.** It drives a local draft while dragging so the
+  thumbs track the pointer, and filters once the gesture ends rather than on every
+  pointer move.
+- **Analysis results are merged through an index and flushed in batches.** Per-track
+  `findIndex` made the merge O(n^2) (~850ms of pure lookup on a 20k import), and assigning
+  into the array per track repainted the table hundreds of times per import.
+- **Storage is local-first, per track.** The library lives in IndexedDB as individual
+  records, not one blob — so a single analysis result is a single small write, and a reload
+  restores everything (tracks, artwork, genres, ISRC, analysis) rather than falling back to
+  the bundled sample. Anything written is stripped of Vue reactivity first; structured clone
+  throws `DataCloneError` on a Proxy.
+- **Re-importing never redoes work.** Imports *merge*: fresh metadata wins, but tempo, key
+  and analysis state are preserved, so only genuinely new tracks enter the queue. Genres are
+  only fetched for artists not already known.
+- **Analysis is a resumable queue.** Every track carries its own state — `pending`, `done`,
+  `failed`, `unavailable` — indexed so "what is left?" is a cursor, not a scan. Results
+  flush every 10 tracks, so killing the tab mid-run costs at most a batch. A track is
+  retried up to 3 times before being parked as `failed`; **Resume** picks up where it
+  stopped and **Retry failed** re-queues the parked ones. This matters at several thousand
+  tracks, where third-party lookups failing is normal rather than exceptional.
+- **Import counts are explained.** Rows Spotify counts but that carry no usable track —
+  local files, region-unavailable items — are reported rather than silently dropped, and a
+  failed page keeps everything fetched so far instead of discarding the import.
 
 ## Features
 
 | | |
 |---|---|
-| Filter by key, mode, BPM range, genre, free text | Search is debounced |
-| Camelot codes on every row | Verified across all 24 keys |
+| Filter by key (Camelot), BPM range, genre, free text | Search is debounced |
+| Keys shown in Camelot throughout | One column, one chip per wheel position; note name on hover |
 | **Mix** | Harmonically compatible next tracks, adjustable BPM tolerance |
 | **Build a set** | A chained path where every step mixes into the next; ramp up, hold or wind down |
 | Half/double-time marking | `½×` / `2×` so a 64 BPM match against 128 reads as intended |

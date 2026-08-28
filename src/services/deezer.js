@@ -16,8 +16,30 @@
 const API = 'https://api.deezer.com';
 let counter = 0;
 
+/**
+ * Deezer allows roughly 50 requests per 5 seconds and starts returning quota
+ * errors past that. Enrichment runs several lanes concurrently, each making two or
+ * three calls per track, so it would otherwise trip the limit within seconds and
+ * every subsequent track would come back unmatched.
+ *
+ * A simple spacing gate: at most one request every `MIN_INTERVAL_MS`, queued.
+ */
+const MIN_INTERVAL_MS = 110;
+let lastRequestAt = 0;
+let gate = Promise.resolve();
+
+function throttle() {
+  gate = gate.then(async () => {
+    const wait = lastRequestAt + MIN_INTERVAL_MS - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastRequestAt = Date.now();
+  });
+  return gate;
+}
+
 /** Deezer has no CORS, but it does still honour JSONP. */
-function jsonp(path, { timeout = 10_000 } = {}) {
+async function jsonp(path, { timeout = 10_000 } = {}) {
+  await throttle();
   return new Promise((resolve, reject) => {
     counter += 1;
     const callback = `__dz_${Date.now()}_${counter}`;
@@ -35,8 +57,12 @@ function jsonp(path, { timeout = 10_000 } = {}) {
 
     window[callback] = (data) => {
       cleanup();
-      if (data && data.error) reject(new Error(data.error.message || 'Deezer error'));
-      else resolve(data);
+      if (data && data.error) {
+        const message = data.error.message || data.error.type || 'Deezer error';
+        const error = new Error(message);
+        error.isQuota = /quota|limit/i.test(message);
+        reject(error);
+      } else resolve(data);
     };
     script.onerror = () => {
       cleanup();

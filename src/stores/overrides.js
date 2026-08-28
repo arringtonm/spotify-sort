@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { getAllOverrides, putOverride, deleteOverride } from '../services/cache.js';
+import { getAllOverrides, putOverride, deleteOverride } from '../services/db.js';
 import { toPitchClass, displayName, normaliseMode } from '../lib/musicalKey.js';
 
 /**

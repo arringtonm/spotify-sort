@@ -1,4 +1,4 @@
-import { getAccessToken, ReauthRequired } from './spotifyAuth.js';
+import { getAccessToken } from './spotifyAuth.js';
 
 const API = 'https://api.spotify.com/v1';
 
@@ -75,26 +75,49 @@ function rowToTrack(row) {
   return normaliseTrack(row?.track ?? row?.item ?? row);
 }
 
+/**
+ * Walk a paged collection.
+ *
+ * Returns a report rather than a bare array, because two things were previously
+ * invisible: rows Spotify counts in `total` but that carry no usable track (local
+ * files, region-unavailable items) were dropped without trace, and a single failed
+ * page threw away every page already fetched. Now both are reported and the caller
+ * keeps whatever was retrieved.
+ */
 async function paginate(firstPath, onProgress) {
-  const out = [];
+  const tracks = [];
   let path = firstPath;
   let total = null;
+  let skipped = 0;
+  let complete = true;
+  let failure = null;
 
   while (path) {
-    const page = await request(path);
+    let page;
+    try {
+      page = await request(path);
+    } catch (error) {
+      // Keep what we have; one bad page should not discard a long import.
+      complete = false;
+      failure = error.message || String(error);
+      break;
+    }
+
     if (total === null) total = page.total ?? null;
 
     const rows = page.items ?? page.tracks?.items ?? [];
     for (const row of rows) {
       const track = rowToTrack(row);
-      if (track) out.push(track);
+      if (track) tracks.push(track);
+      else skipped += 1;
     }
-    onProgress?.({ loaded: out.length, total });
+    onProgress?.({ loaded: tracks.length, total, skipped });
 
     // `next` is an absolute URL; strip the API prefix to reuse the auth wrapper.
     path = page.next ? page.next.replace(API, '') : null;
   }
-  return out;
+
+  return { tracks, total, skipped, complete, failure };
 }
 
 export function getSavedTracks(onProgress) {
@@ -126,13 +149,12 @@ export function getMyPlaylists(onProgress) {
  * why pasting an arbitrary playlist link cannot work.
  */
 export async function getPlaylistTracks(playlistId, onProgress) {
-  try {
-    return await paginate(`/playlists/${playlistId}/items?limit=50`, onProgress);
-  } catch (error) {
-    if (error instanceof ReauthRequired) throw error;
-    // Pre-Feb-2026 route, for apps that were postponed onto the old shape.
+  const report = await paginate(`/playlists/${playlistId}/items?limit=50`, onProgress);
+  // Pre-Feb-2026 route, for apps that were postponed onto the old shape.
+  if (!report.tracks.length && !report.complete) {
     return paginate(`/playlists/${playlistId}/tracks?limit=50`, onProgress);
   }
+  return report;
 }
 
 /** Accept a playlist URL, a spotify: URI, or a bare ID. */

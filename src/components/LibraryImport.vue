@@ -13,10 +13,32 @@
         >
           Sign in with Spotify
         </v-btn>
-        <p class="import__note">
-          Development mode: only allowlisted accounts (max 5) can sign in, and the owner
-          account needs Premium.
-        </p>
+        <div class="import__note">
+          <p>
+            Development mode: only allowlisted accounts (max 5) can sign in, and the owner
+            account needs Premium.
+          </p>
+          <p class="mt-1">
+            Redirect URI to register in the
+            <a
+              href="https://developer.spotify.com/dashboard"
+              target="_blank"
+              rel="noopener"
+            >
+              Spotify dashboard
+            </a>
+            — it must match exactly, with no trailing slash:
+          </p>
+          <code class="redirect">{{ diagnostics.redirectUri }}</code>
+          <v-btn
+            :prepend-icon="mdiContentCopy"
+            variant="text"
+            size="x-small"
+            @click="copyRedirect"
+          >
+            {{ copied ? 'Copied' : 'Copy' }}
+          </v-btn>
+        </div>
       </template>
 
       <template v-else>
@@ -114,6 +136,71 @@
       </div>
     </template>
 
+    <v-alert
+      v-if="!diagnostics.originMatches"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mt-3"
+    >
+      You are viewing this at <strong>{{ diagnostics.currentOrigin }}</strong>, but the
+      redirect URI points at <strong>{{ diagnostics.registeredOrigin }}</strong>. Those are
+      different origins, so sign-in would lose its PKCE verifier on the way back. Open the
+      app at <strong>{{ diagnostics.registeredOrigin }}</strong> instead.
+    </v-alert>
+
+    <div
+      v-if="!library.isDemo"
+      class="import__row import__status"
+    >
+      <span class="import__note">
+        <strong>{{ library.total }}</strong> tracks stored on this device
+        <template v-if="library.counts.done"> · {{ library.counts.done }} analysed</template>
+        <template v-if="library.pendingCount"> · {{ library.pendingCount }} pending</template>
+        <template v-if="library.failedCount"> · {{ library.failedCount }} failed</template>
+        <template v-if="library.counts.unavailable">
+          · {{ library.counts.unavailable }} no preview
+        </template>
+      </span>
+
+      <v-btn
+        v-if="library.canResume"
+        :prepend-icon="mdiPlayCircleOutline"
+        variant="outlined"
+        size="small"
+        @click="library.resumeAnalysis()"
+      >
+        Resume analysis ({{ library.pendingCount }})
+      </v-btn>
+
+      <v-btn
+        v-if="library.canRetry"
+        :prepend-icon="mdiRefresh"
+        variant="outlined"
+        size="small"
+        @click="library.retryFailed()"
+      >
+        Retry failed ({{ library.failedCount }})
+      </v-btn>
+
+      <v-btn
+        v-if="library.busy"
+        variant="outlined"
+        size="small"
+        @click="library.cancel()"
+      >
+        Stop
+      </v-btn>
+
+      <v-btn
+        variant="text"
+        size="small"
+        @click="confirmClear = true"
+      >
+        Clear stored library
+      </v-btn>
+    </div>
+
     <div
       v-if="library.progress"
       class="import__progress"
@@ -144,6 +231,18 @@
     </v-alert>
 
     <v-alert
+      v-if="library.warning"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="mt-3"
+      closable
+      @click:close="library.warning = ''"
+    >
+      {{ library.warning }}
+    </v-alert>
+
+    <v-alert
       v-if="library.summary"
       type="info"
       variant="tonal"
@@ -170,6 +269,38 @@
         Open in Spotify
       </a>
     </v-alert>
+
+    <v-dialog
+      v-model="confirmClear"
+      max-width="420"
+    >
+      <v-card>
+        <v-card-title class="text-body-1">
+          Clear stored library?
+        </v-card-title>
+        <v-card-text class="import__note">
+          Removes the {{ library.total }} tracks saved on this device, including their
+          analysis. Your manual key corrections are kept. You would need to import and
+          re-analyse from scratch.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            @click="confirmClear = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            @click="clearStored"
+          >
+            Clear
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog
       v-model="exportDialog"
@@ -213,8 +344,20 @@
 </template>
 
 <script>
-import { mdiFileMusic, mdiDownload, mdiPlaylistPlus } from '@mdi/js';
-import { isLoggedIn, login, clearTokens } from '../services/spotifyAuth.js';
+import {
+  mdiFileMusic,
+  mdiDownload,
+  mdiPlaylistPlus,
+  mdiContentCopy,
+  mdiPlayCircleOutline,
+  mdiRefresh,
+} from '@mdi/js';
+import {
+  isLoggedIn,
+  login,
+  clearTokens,
+  redirectDiagnostics,
+} from '../services/spotifyAuth.js';
 import { parsePlaylistRef } from '../services/spotifyApi.js';
 import { useLibraryStore } from '../stores/library.js';
 import { useFiltersStore } from '../stores/filters.js';
@@ -229,6 +372,10 @@ export default {
       mdiFileMusic,
       mdiDownload,
       mdiPlaylistPlus,
+      mdiContentCopy,
+      mdiPlayCircleOutline,
+      mdiRefresh,
+      diagnostics: redirectDiagnostics(),
     };
   },
 
@@ -248,6 +395,8 @@ export default {
     exportDialog: false,
     exportName: 'Spotify Sort selection',
     exported: null,
+    copied: false,
+    confirmClear: false,
   }),
 
   computed: {
@@ -285,10 +434,28 @@ export default {
       }
     },
 
+    async copyRedirect() {
+      try {
+        await navigator.clipboard.writeText(this.diagnostics.redirectUri);
+        this.copied = true;
+        setTimeout(() => {
+          this.copied = false;
+        }, 2000);
+      } catch {
+        this.library.error = `Copy failed — the URI is ${this.diagnostics.redirectUri}`;
+      }
+    },
+
     signOut() {
       clearTokens();
       this.signedIn = false;
-      this.library.reset();
+      // Signing out does not wipe the library — it is yours, stored locally.
+      this.filters.resetBounds();
+    },
+
+    async clearStored() {
+      this.confirmClear = false;
+      await this.library.reset();
       this.filters.resetBounds();
     },
 
@@ -370,5 +537,21 @@ export default {
 
 .import__progress {
   margin-top: 1rem;
+}
+
+.import__status {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(var(--v-theme-pale));
+}
+
+.redirect {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  background: rgb(var(--v-theme-pale));
+  color: rgb(var(--v-theme-ink));
+  font-size: 0.8125rem;
+  user-select: all;
 }
 </style>
