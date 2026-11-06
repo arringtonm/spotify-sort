@@ -18,15 +18,37 @@
           variant="ghost"
           size="sm"
           class="text-accent"
-          :class="!filters.activeFilterCount && 'invisible'"
-          :aria-hidden="!filters.activeFilterCount || undefined"
-          :tabindex="filters.activeFilterCount ? undefined : -1"
+          :class="(!filters.activeFilterCount || crates.active) && 'invisible'"
+          :aria-hidden="!filters.activeFilterCount || crates.active || undefined"
+          :tabindex="filters.activeFilterCount && !crates.active ? undefined : -1"
           @click="filters.resetAll()"
         >
           Reset
         </Button>
       </div>
-      <FilterPanel dense />
+      <div
+        v-if="crates.active"
+        class="rounded-xl border border-border bg-surface-2/60 p-4 text-sm"
+      >
+        <p class="font-medium">
+          Viewing a crate
+        </p>
+        <p class="mt-1 text-muted">
+          A crate shows every track you put in it, in your order. Filters apply to All tracks.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          class="mt-3"
+          @click="crates.close()"
+        >
+          <Library /> Back to all tracks
+        </Button>
+      </div>
+      <FilterPanel
+        v-else
+        dense
+      />
     </aside>
 
     <main
@@ -45,7 +67,7 @@
             :placeholder="searchPlaceholder"
             aria-label="Search tracks"
             enterkeyhint="search"
-            :disabled="filters.ordered"
+            :disabled="ordered"
             clearable
             clear-label="search"
           />
@@ -53,6 +75,7 @@
         <Button
           variant="secondary"
           class="relative lg:hidden"
+          :disabled="Boolean(crates.active)"
           :aria-label="`Filters${filters.activeFilterCount ? `, ${filters.activeFilterCount} active` : ''}`"
           @click="filtersOpen = true"
         >
@@ -63,8 +86,11 @@
             class="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg ring-2 ring-bg tabular"
           >{{ filters.activeFilterCount }}</span>
         </Button>
-        <SortMenu />
-        <ExportMenu :rows="filters.rows" />
+        <SortMenu :disabled="Boolean(crates.active)" />
+        <ExportMenu
+          :rows="rows"
+          :name="crates.active?.name"
+        />
         <KeyLegend />
       </div>
 
@@ -100,7 +126,13 @@
           </div>
         </div>
 
-        <SeedCard />
+        <CrateBar />
+
+        <CrateHeader v-if="crates.active" />
+        <SeedCard
+          v-else
+          @edit="editing = $event"
+        />
 
         <div class="flex min-w-0 items-center gap-x-4">
           <h1
@@ -108,20 +140,48 @@
             class="shrink-0 text-sm text-muted"
             aria-live="polite"
           >
-            <strong class="inline-block min-w-[5ch] text-right font-semibold text-text tabular">{{ filters.rows.length.toLocaleString() }}</strong>
-            {{ filters.ordered ? 'tracks in this set' : filters.seedTrack ? 'compatible tracks' : `of ${library.total.toLocaleString()} tracks` }}
+            <strong class="inline-block min-w-[5ch] text-right font-semibold text-text tabular">{{ rows.length.toLocaleString() }}</strong>
+            {{ countLabel }}
           </h1>
-          <AppliedFilters class="flex-1" />
+          <AppliedFilters
+            class="flex-1"
+            :class="crates.active && 'invisible'"
+          />
         </div>
       </div>
 
       <TrackList
-        v-if="filters.rows.length"
-        :rows="filters.rows"
-        :ordered="filters.ordered"
+        v-if="rows.length"
+        :rows="rows"
+        :ordered="ordered"
+        :reorderable="Boolean(crates.active)"
+        @reorder="(from, to) => crates.moveVisible(crates.activeId, from, to)"
         @seed="seed"
         @edit="editing = $event"
       />
+
+      <div
+        v-else-if="crates.active"
+        class="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-6 py-16 text-center"
+      >
+        <FolderOpen
+          class="size-8 text-subtle"
+          aria-hidden="true"
+        />
+        <p class="mt-3 font-medium">
+          This crate is empty
+        </p>
+        <p class="mt-1 max-w-sm text-sm text-muted">
+          In All tracks, drag tracks onto “{{ crates.active.name }}” or use ⋯ → Add to crate.
+        </p>
+        <Button
+          variant="secondary"
+          class="mt-4"
+          @click="crates.close()"
+        >
+          <Library /> Go to all tracks
+        </Button>
+      </div>
 
       <div
         v-else
@@ -181,13 +241,15 @@
       :track="editing"
       @close="editing = null"
     />
+    <CrateDialogs />
+    <CrateDock />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { useMediaQuery } from '@vueuse/core';
-import { Search, SlidersHorizontal, SearchX, Import, X } from '@lucide/vue';
+import { useMediaQuery, useEventListener } from '@vueuse/core';
+import { Search, SlidersHorizontal, SearchX, Import, X, Library, FolderOpen } from '@lucide/vue';
 import Button from '@/components/ui/Button.vue';
 import TextInput from '@/components/ui/TextInput.vue';
 import Sheet from '@/components/ui/Sheet.vue';
@@ -199,6 +261,11 @@ import KeyLegend from '@/components/KeyLegend.vue';
 import SeedCard from '@/components/SeedCard.vue';
 import TrackList from '@/components/TrackList.vue';
 import EditTrackSheet from '@/components/EditTrackSheet.vue';
+import CrateBar from '@/components/CrateBar.vue';
+import CrateHeader from '@/components/CrateHeader.vue';
+import CrateDialogs from '@/components/CrateDialogs.vue';
+import CrateDock from '@/components/CrateDock.vue';
+import { useCratesStore, CRATES_STORAGE_KEY } from '@/stores/crates.js';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';
 import { useOverridesStore } from '@/stores/overrides.js';
@@ -208,10 +275,35 @@ const filters = useFiltersStore();
 const library = useLibraryStore();
 const overrides = useOverridesStore();
 const ui = useUi();
+const crates = useCratesStore();
+
+/** A crate, when open, replaces the library view: its tracks, in its order. */
+const rows = computed(() => (crates.active ? crates.activeView.rows : filters.rows));
+const ordered = computed(() => Boolean(crates.active) || filters.ordered);
+const countLabel = computed(() => {
+  if (crates.active) return rows.value.length === 1 ? 'track in this crate' : 'tracks in this crate';
+  if (filters.ordered) return 'tracks in this set';
+  if (filters.seedTrack) return 'compatible tracks';
+  return `of ${library.total.toLocaleString()} tracks`;
+});
+
+// Opening a crate leaves mixing mode; both start at the top.
+watch(
+  () => crates.activeId,
+  (id) => {
+    if (id && filters.seedTrack) filters.clearSeed();
+    window.scrollTo({ top: 0 });
+  }
+);
+// Another tab edited crates.
+useEventListener(window, 'storage', (event) => {
+  if (event.key === CRATES_STORAGE_KEY) crates.reload();
+});
 
 const filtersOpen = ref(false);
 const roomy = useMediaQuery('(min-width: 640px)');
 const searchPlaceholder = computed(() => {
+  if (crates.active) return roomy.value ? 'Search is off inside a crate' : 'Search off in crates';
   if (filters.ordered) return roomy.value ? 'Search is off while building a set' : 'Search off in sets';
   return roomy.value ? 'Search artist, title, album, genre' : 'Search tracks';
 });
@@ -269,6 +361,7 @@ function dismissDemo() {
 }
 
 function seed(track) {
+  crates.close();
   filters.seed(track);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }

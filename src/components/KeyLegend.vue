@@ -14,6 +14,7 @@
         :class="[floatingPanel, 'w-[min(22rem,calc(100vw-1.5rem))] p-4 text-sm']"
         align="end"
         :side-offset="6"
+        :collision-padding="12"
       >
         <h2 class="mb-3 font-semibold">
           Reading the list

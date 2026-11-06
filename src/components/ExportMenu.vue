@@ -1,5 +1,5 @@
 <template>
-  <DropdownMenuRoot>
+  <DropdownMenuRoot :modal="false">
     <DropdownMenuTrigger as-child>
       <Button
         variant="secondary"
@@ -16,11 +16,12 @@
         :class="floatingPanel"
         align="end"
         :side-offset="4"
+        :collision-padding="12"
       >
         <DropdownMenuLabel class="px-2.5 py-1.5 text-xs text-subtle">
           Exports the {{ rows.length.toLocaleString() }} tracks shown
         </DropdownMenuLabel>
-        <MenuItem @select="library.exportCsv(rows, 'spotify-sort.csv')">
+        <MenuItem @select="library.exportCsv(rows, csvName)">
           <FileSpreadsheet /> Download CSV
         </MenuItem>
         <MenuItem
@@ -59,7 +60,7 @@
       >
         <TextInput
           :id="id"
-          v-model="name"
+          v-model="playlistName"
           maxlength="100"
           :aria-describedby="describedBy"
           :aria-invalid="invalid"
@@ -93,7 +94,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -113,7 +114,11 @@ import { useAuthStore } from '@/stores/auth.js';
 import { useToastStore } from '@/stores/toasts.js';
 import { spotifyUrl } from '@/lib/trackInfo.js';
 
-const props = defineProps({ rows: { type: Array, required: true } });
+const props = defineProps({
+  rows: { type: Array, required: true },
+  /** A crate or set name, used for the file name and the default playlist name. */
+  name: { type: String, default: '' },
+});
 
 const library = useLibraryStore();
 const auth = useAuthStore();
@@ -121,10 +126,22 @@ const toasts = useToastStore();
 
 const dialog = ref(false);
 const saving = ref(false);
-const name = ref(`Spotify Sort – ${new Date().toLocaleDateString()}`);
+const playlistName = ref('');
+// Fill the playlist name each time the dialog opens, so a crate's name carries over.
+watch(dialog, (open) => {
+  if (open) playlistName.value = props.name || `Spotify Sort – ${new Date().toLocaleDateString()}`;
+});
+const csvName = computed(() => {
+  const slug = props.name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `${slug || 'spotify-sort'}.csv`;
+});
 const submitted = ref(false);
 const nameError = computed(() =>
-  submitted.value && !name.value.trim() ? 'Give the playlist a name.' : ''
+  submitted.value && !playlistName.value.trim() ? 'Give the playlist a name.' : ''
 );
 
 const spotifyRows = computed(() => props.rows.filter((t) => spotifyUrl(t)));
@@ -135,7 +152,7 @@ async function save() {
   if (nameError.value) return;
   saving.value = true;
   try {
-    const result = await library.exportToSpotify(name.value.trim(), spotifyRows.value);
+    const result = await library.exportToSpotify(playlistName.value.trim(), spotifyRows.value);
     dialog.value = false;
     submitted.value = false;
     toasts.push({

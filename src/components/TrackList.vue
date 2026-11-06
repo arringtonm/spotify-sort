@@ -53,13 +53,26 @@
         role="row"
         :aria-rowindex="item.index + 2"
         :data-current="player.isCurrent(rows[item.index].id) || undefined"
+        :draggable="!coarse"
         :class="cn(
           'group absolute inset-x-0 top-0 grid items-center border-b border-border/60 transition-colors hover:bg-surface-2/60',
           'data-[current]:bg-accent-soft/40',
+          dragFrom === item.index && 'opacity-40',
           gridClass
         )"
         :style="{ height: `${item.size}px`, transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }"
+        @dragstart="onDragStart($event, item.index)"
+        @dragend="onDragEnd"
+        @dragover="onDragOver($event, item.index)"
+        @drop="onDrop($event, item.index)"
       >
+        <!-- Where a reordered row will land. -->
+        <span
+          v-if="dropAt?.index === item.index"
+          class="pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-accent"
+          :class="dropAt.after ? '-bottom-px' : '-top-px'"
+          aria-hidden="true"
+        />
         <template
           v-for="track in [rows[item.index]]"
           :key="track.id"
@@ -89,6 +102,7 @@
                   v-if="track.artwork"
                   :src="track.artwork"
                   alt=""
+                  draggable="false"
                   loading="lazy"
                   class="size-full object-cover"
                 >
@@ -206,6 +220,8 @@ import { usePlayerStore } from '@/stores/player.js';
 import { formatDuration } from '@/lib/exportFormats.js';
 import { formatTempo, canSeed } from '@/lib/trackInfo.js';
 import { cn } from '@/lib/cn.js';
+import { useTrackDrag, readTrackDrag, isTrackDrag } from '@/composables/useTrackDrag.js';
+import { dropIndex } from '@/lib/crates.js';
 
 /**
  * One virtualised list that is a table on wide screens and a two-line list on
@@ -216,8 +232,10 @@ import { cn } from '@/lib/cn.js';
 const props = defineProps({
   rows: { type: Array, required: true },
   ordered: Boolean,
+  /** Rows can be dragged into a new order (crates). */
+  reorderable: Boolean,
 });
-defineEmits(['seed', 'edit']);
+const emit = defineEmits(['seed', 'edit', 'reorder']);
 
 const filters = useFiltersStore();
 const player = usePlayerStore();
@@ -274,4 +292,51 @@ watch(
     virtualizer.value.measure();
   })
 );
+
+/**
+ * Every row can be dragged onto a crate. In a crate, rows can also be dragged
+ * within the list to reorder; the drop line shows where it will land.
+ */
+const drag = useTrackDrag();
+const dragFrom = ref(null);
+const dropAt = ref(null);
+watch(
+  () => drag.active(),
+  (on) => {
+    if (!on) {
+      dragFrom.value = null;
+      dropAt.value = null;
+    }
+  }
+);
+
+function onDragStart(event, index) {
+  dragFrom.value = index;
+  drag.start(event, props.rows[index], { from: index, reorder: props.reorderable });
+}
+
+function onDragEnd() {
+  dragFrom.value = null;
+  dropAt.value = null;
+  drag.end();
+}
+
+function onDragOver(event, index) {
+  if (!props.reorderable || dragFrom.value == null || !isTrackDrag(event)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  const rect = event.currentTarget.getBoundingClientRect();
+  const after = event.clientY > rect.top + rect.height / 2;
+  if (dropAt.value?.index !== index || dropAt.value?.after !== after) dropAt.value = { index, after };
+}
+
+function onDrop(event, index) {
+  if (!props.reorderable || dragFrom.value == null) return;
+  event.preventDefault();
+  const data = readTrackDrag(event);
+  const from = data?.from ?? dragFrom.value;
+  const to = dropIndex(from, index, dropAt.value?.after ?? false);
+  onDragEnd();
+  if (to !== from) emit('reorder', from, to);
+}
 </script>

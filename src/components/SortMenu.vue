@@ -1,10 +1,10 @@
 <template>
-  <DropdownMenuRoot>
+  <DropdownMenuRoot :modal="false">
     <DropdownMenuTrigger as-child>
       <Button
         variant="secondary"
         size="sm"
-        :disabled="filters.ordered"
+        :disabled="filters.ordered || disabled"
         :aria-label="`Sort: ${current}`"
       >
         <ArrowUpDown />
@@ -16,6 +16,7 @@
         :class="floatingPanel"
         align="end"
         :side-offset="4"
+        :collision-padding="12"
       >
         <DropdownMenuLabel class="px-2.5 py-1.5 text-xs font-medium text-subtle">
           Sort by
@@ -79,6 +80,7 @@ import { floatingPanel } from './ui/menu.js';
 import { useFiltersStore, SORT_FIELDS } from '@/stores/filters.js';
 
 /** Explicit sort: field and direction as plain choices. Works the same on touch. */
+defineProps({ disabled: Boolean });
 const filters = useFiltersStore();
 
 const fields = computed(() =>

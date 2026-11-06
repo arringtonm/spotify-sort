@@ -85,6 +85,7 @@
             :class="[floatingPanel, 'w-[min(26rem,calc(100vw-1.5rem))] p-4']"
             align="end"
             :side-offset="6"
+            :collision-padding="12"
           >
             <h2 class="mb-3 text-sm font-semibold">
               Audio analysis
@@ -94,7 +95,7 @@
         </PopoverPortal>
       </PopoverRoot>
 
-      <DropdownMenuRoot>
+      <DropdownMenuRoot :modal="false">
         <DropdownMenuTrigger as-child>
           <Button
             variant="ghost"
@@ -111,6 +112,7 @@
             :class="floatingPanel"
             align="end"
             :side-offset="6"
+            :collision-padding="12"
           >
             <DropdownMenuLabel class="px-2.5 py-1.5 text-xs font-medium text-subtle">
               Appearance

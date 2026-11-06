@@ -35,6 +35,21 @@
           <KeyBadge :track="seed" />
           <span class="font-mono text-sm tabular">{{ formatTempo(seed.tempo) }} BPM</span>
         </div>
+        <!-- Estimated key: one quiet line, not a warning box. The % sits beside
+             the key pill above; this says what we do about it. -->
+        <p
+          v-if="seed.keySource === 'analysis'"
+          class="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted"
+        >
+          <span>Estimated key — confident matches listed first.</span>
+          <button
+            type="button"
+            class="rounded font-medium text-accent underline-offset-2 hover:underline focus-visible:underline"
+            @click="$emit('edit', seed)"
+          >
+            Correct it
+          </button>
+        </p>
       </div>
       <Button
         variant="ghost"
@@ -45,23 +60,6 @@
         <X />
       </Button>
     </div>
-
-    <p
-      v-if="seed.keySource === 'analysis'"
-      class="mt-3 flex gap-2 rounded-lg bg-warn-soft px-3 py-2 text-sm"
-    >
-      <TriangleAlert
-        class="mt-0.5 size-4 shrink-0 text-warn"
-        aria-hidden="true"
-      />
-      <span>
-        <template v-if="seedConfidence?.percent != null">
-          This key is an estimate, about {{ seedConfidence.percent }}% likely to be exactly right{{ seedConfidence.percent < 50 ? ', but often a neighbouring key on the wheel' : '' }}.
-        </template>
-        <template v-else>This key was estimated from audio, so it may be off.</template>
-        Suggestions are our best guess: tracks with confident keys are listed first. If you know the real key, correct it from the track's menu.
-      </span>
-    </p>
 
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       <div class="sm:col-span-2">
@@ -139,6 +137,15 @@
         {{ filters.rows.length }} compatible {{ filters.rows.length === 1 ? 'track' : 'tracks' }}: same key, ±1 on the wheel, or relative major/minor, within ±{{ filters.bpmTolerance }} BPM (half/double time included).
       </template>
     </p>
+    <Button
+      v-if="filters.setMode && filters.rows.length"
+      variant="secondary"
+      size="sm"
+      class="mt-2"
+      @click="saveAsCrate"
+    >
+      <FolderPlus /> Save set as crate
+    </Button>
   </section>
 </template>
 
@@ -147,23 +154,24 @@ import { computed } from 'vue';
 import {
   X,
   Disc3,
-  TriangleAlert,
   ListMusic,
   ListOrdered,
   TrendingUp,
   TrendingDown,
   MoveRight,
+  FolderPlus,
 } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import Segmented from './ui/Segmented.vue';
 import RangeSlider from './ui/RangeSlider.vue';
 import KeyBadge from './KeyBadge.vue';
 import { useFiltersStore } from '@/stores/filters.js';
-import { formatTempo, keyConfidence } from '@/lib/trackInfo.js';
+import { useCratesStore } from '@/stores/crates.js';
+import { formatTempo } from '@/lib/trackInfo.js';
 
+defineEmits(['edit']);
 const filters = useFiltersStore();
 const seed = computed(() => filters.seedTrack);
-const seedConfidence = computed(() => keyConfidence(filters.seedTrack));
 // Reka toggle values are strings; the store keeps a boolean.
 const mode = computed({
   get: () => (filters.setMode ? 'set' : 'next'),
@@ -172,4 +180,13 @@ const mode = computed({
 const directionLabel = computed(
   () => ({ 1: 'building tempo', 0: 'holding tempo', '-1': 'winding down' })[String(filters.setDirection)]
 );
+
+const crates = useCratesStore();
+/** Keep a built set: it becomes a crate you can reorder and come back to. */
+function saveAsCrate() {
+  crates.requestCreate(
+    filters.rows.map((t) => t.id),
+    `${seed.value.title} set`
+  );
+}
 </script>
