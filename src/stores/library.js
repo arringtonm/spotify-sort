@@ -50,6 +50,12 @@ import {
   MAX_SECONDS,
 } from '../lib/audioFiles.js';
 
+function describeMerge({ added, kept }) {
+  const parts = [`${added.toLocaleString()} new`];
+  if (kept) parts.push(`${kept.toLocaleString()} already in your library`);
+  return parts.join(' · ');
+}
+
 /** Spotify's embed page lists at most this many tracks, with no paging. */
 const EMBED_PAGE_LIMIT = 100;
 
@@ -80,6 +86,13 @@ export const useLibraryStore = defineStore('library', {
     storageBroken: false,
     counts: { pending: 0, done: 0, failed: 0, unavailable: 0 },
     activeRun: null,
+    /**
+     * The import in progress (or just finished), as explicit steps so the UI
+     * can show a process rather than a spinner:
+     *   { title, status: running|done|error|cancelled, steps: [...], summary, warning, error }
+     * Each step: { key, label, state: waiting|active|done|error|skipped, detail, done, total }
+     */
+    job: null,
   }),
 
   getters: {
@@ -163,6 +176,55 @@ export const useLibraryStore = defineStore('library', {
 
     setProgress(label, done, total) {
       this.progress = { label, done, total };
+      const step =
+        this.job?.status === 'running' ? this.job.steps.find((s) => s.state === 'active') : null;
+      if (step) Object.assign(step, { detail: label, done, total });
+    },
+
+    // ---- Import job steps --------------------------------------------------
+    startJob(title, steps) {
+      this.job = {
+        title,
+        status: 'running',
+        startedAt: Date.now(),
+        steps: steps.map(([key, label]) => ({
+          key,
+          label,
+          state: 'waiting',
+          detail: '',
+          done: 0,
+          total: 0,
+        })),
+        summary: '',
+        warning: '',
+        error: '',
+      };
+      this.stepActive(steps[0][0]);
+    },
+    jobStep(key) {
+      // Only a running import is updated; Resume/Retry run analysis without one.
+      if (this.job?.status !== 'running') return null;
+      return this.job.steps.find((s) => s.key === key) ?? null;
+    },
+    stepActive(key, detail = '') {
+      const step = this.jobStep(key);
+      if (step) Object.assign(step, { state: 'active', detail, done: 0, total: 0 });
+    },
+    stepDone(key, detail = '') {
+      const step = this.jobStep(key);
+      if (step) Object.assign(step, { state: 'done', detail });
+    },
+    stepSkip(key, detail = '') {
+      const step = this.jobStep(key);
+      if (step) Object.assign(step, { state: 'skipped', detail });
+    },
+    /** Finish one step and start the next. */
+    advance(fromKey, detail, toKey) {
+      this.stepDone(fromKey, detail);
+      if (toKey) this.stepActive(toKey, 'Starting…');
+    },
+    dismissJob() {
+      if (this.job?.status !== 'running') this.job = null;
     },
 
     async withBusy(run) {
@@ -172,11 +234,26 @@ export const useLibraryStore = defineStore('library', {
       try {
         const result = await run();
         if (this.origin !== 'demo') requestPersistence();
+        if (this.job?.status === 'running') {
+          // Anything never reached (e.g. nothing to analyse) is skipped, not pending.
+          this.job.steps.forEach((s) => {
+            if (s.state === 'waiting') s.state = 'skipped';
+          });
+          this.job.status = this.activeRun?.cancelled ? 'cancelled' : 'done';
+          this.job.summary = this.summary;
+          this.job.warning = this.warning;
+        }
         return result;
       } catch (error) {
         this.error = error.message || String(error);
         // A dead refresh token means every Spotify control would now fail.
         if (error?.name === 'ReauthRequired') useAuthStore().refresh();
+        if (this.job?.status === 'running') {
+          const step = this.job.steps.find((s) => s.state === 'active');
+          if (step) Object.assign(step, { state: 'error', detail: this.error });
+          this.job.status = 'error';
+          this.job.error = this.error;
+        }
         throw error;
       } finally {
         this.busy = false;
@@ -197,7 +274,12 @@ export const useLibraryStore = defineStore('library', {
      * merge: anything already analysed keeps its tempo and key, so re-importing a
      * library is cheap and never redoes work.
      */
-    async importFromSpotify({ source, playlistId, playlistRef }) {
+    async importFromSpotify({ source, playlistId, playlistRef, title }) {
+      this.startJob(title ?? (source === 'saved' ? 'Liked Songs' : 'Spotify playlist'), [
+        ['read', 'Read tracks from Spotify'],
+        ['save', 'Add to your library'],
+        ['analyse', 'Measure tempo and key'],
+      ]);
       return this.withBusy(async () => {
         const onFetch = ({ loaded, total, skipped }) =>
           this.setProgress(
@@ -222,8 +304,10 @@ export const useLibraryStore = defineStore('library', {
         const known = new Map(this.raw.map((t) => [t.id, t]));
         const needGenres = tracks.filter((t) => !known.get(t.id)?.genres?.length);
         await this.attachGenres(needGenres).catch(() => {});
+        this.advance('read', `${tracks.length.toLocaleString()} tracks found`, 'save');
 
         const merge = await putTracks(tracks);
+        this.advance('save', describeMerge(merge), 'analyse');
         await setMeta('library', { origin: 'spotify', at: Date.now() });
         this.raw = await getAllTracks();
         this.origin = 'spotify';
@@ -248,6 +332,15 @@ export const useLibraryStore = defineStore('library', {
       const ref = parseSourceLink(text);
       if (ref.error) throw new Error(ref.error);
 
+      const what =
+        ref.type === 'tracks'
+          ? `${ref.ids.length} Spotify tracks`
+          : `${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}`;
+      this.startJob(what, [
+        ['read', ref.type === 'tracks' ? 'Look up each track' : `Read the ${ref.type}`],
+        ['save', 'Add to your library'],
+        ['analyse', 'Measure tempo and key'],
+      ]);
       return this.withBusy(async () => {
         const onFetch = ({ loaded, total }) =>
           this.setProgress(
@@ -277,7 +370,10 @@ export const useLibraryStore = defineStore('library', {
           await this.attachGenres(needGenres).catch(() => {});
         }
 
+        if (report.name && this.job) this.job.title = report.name;
+        this.advance('read', `${tracks.length.toLocaleString()} tracks found`, 'save');
         const merge = await putTracks(tracks);
+        this.advance('save', describeMerge(merge), 'analyse');
         const detail = {
           name:
             report.name ??
@@ -375,7 +471,7 @@ export const useLibraryStore = defineStore('library', {
             'run it again to pick up the rest'
         );
       }
-      if (total) parts.push(`Spotify reports ${total}`);
+      if (total && total !== merge.added + merge.kept) parts.push(`the source lists ${total}`);
       this.summary = `Imported: ${parts.join('; ')}.`;
     },
 
@@ -397,7 +493,10 @@ export const useLibraryStore = defineStore('library', {
      * Safe to interrupt: whatever completed is already on disk.
      */
     async analyse(tracks) {
-      if (!tracks.length) return;
+      if (!tracks.length) {
+        this.stepSkip('analyse', 'Every track already has tempo and key');
+        return;
+      }
       const run = createAnalysisRun();
       this.activeRun = run;
 
@@ -430,6 +529,11 @@ export const useLibraryStore = defineStore('library', {
       });
       flushToState();
       await this.refreshCounts();
+
+      const measured = stats.done - stats.failed - stats.unavailable;
+      const extra = stats.unavailable ? ` · ${stats.unavailable} have no preview` : '';
+      if (run.cancelled) this.stepDone('analyse', `Stopped after ${stats.done} of ${stats.total} — Resume any time`);
+      else this.stepDone('analyse', `${measured.toLocaleString()} measured${extra}`);
 
       if (run.cancelled) {
         this.warning =
@@ -476,11 +580,18 @@ export const useLibraryStore = defineStore('library', {
     },
 
     /** DJ collections carry their own analysis, so they skip the queue entirely. */
-    async importParsed({ format, tracks }) {
+    async importParsed({ format, tracks, name }) {
+      this.startJob(name ?? `${format} library`, [
+        ['read', 'Read the file'],
+        ['save', 'Add to your library'],
+        ['analyse', 'Measure missing tempo and key'],
+      ]);
+      this.advance('read', `${tracks.length.toLocaleString()} tracks in the file`, 'save');
       return this.withBusy(async () => {
         const merge = await putTracks(
           tracks.map((t) => ({ ...t, analysisState: t.tempo == null ? PENDING : 'done' }))
         );
+        this.advance('save', describeMerge(merge), 'analyse');
         await setMeta('library', { origin: format, at: Date.now() });
         this.raw = await getAllTracks();
         this.origin = format;
@@ -495,7 +606,7 @@ export const useLibraryStore = defineStore('library', {
             : 'Tempo and key come from the file, so they are trusted as-is.');
         // Spotify playlist exports usually lack tempo and key now that Spotify
         // stopped providing them; fill those in the same way as any import.
-        if (pending.length) await this.analyse(pending);
+        await this.analyse(pending);
         return this.raw;
       });
     },
@@ -513,6 +624,10 @@ export const useLibraryStore = defineStore('library', {
       const files = [...fileList].filter(isAudioFile);
       if (!files.length) throw new Error('None of those look like audio files.');
 
+      this.startJob(files.length === 1 ? files[0].name : `${files.length} audio files`, [
+        ['read', 'Decode and analyse each file'],
+        ['save', 'Add to your library'],
+      ]);
       return this.withBusy(async () => {
         const tracks = [];
         const skipped = [];
@@ -567,7 +682,9 @@ export const useLibraryStore = defineStore('library', {
         if (!tracks.length) {
           throw new Error(`Couldn't analyse ${skipped.length === 1 ? 'that file' : 'those files'}: ${skipped.join('; ')}`);
         }
+        this.advance('read', `${tracks.length} analysed${skipped.length ? ` · ${skipped.length} skipped` : ''}`, 'save');
         const merge = await putTracks(tracks);
+        this.stepDone('save', describeMerge(merge));
         await setMeta('library', { origin: 'files', at: Date.now() });
         this.raw = await getAllTracks();
         this.origin = 'files';

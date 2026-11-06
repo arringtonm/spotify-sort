@@ -152,6 +152,28 @@
         </DropdownMenuPortal>
       </DropdownMenuRoot>
     </div>
+
+    <!-- Work in progress, visible from anywhere: a thin bar on the header's
+         bottom edge. Determinate when we know how far along we are. -->
+    <div
+      v-if="library.busy"
+      class="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden"
+      role="progressbar"
+      :aria-label="library.progress?.label || 'Working'"
+      :aria-valuenow="barPercent ?? undefined"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div
+        v-if="barPercent != null"
+        class="h-full bg-accent transition-[width] duration-300"
+        :style="{ width: `${barPercent}%` }"
+      />
+      <div
+        v-else
+        class="header-indeterminate h-full w-1/4 bg-accent"
+      />
+    </div>
   </header>
 </template>
 
@@ -224,6 +246,9 @@ const analysisShort = computed(() =>
       ? 'Working…'
       : `${outstanding.value} to analyse`
 );
+const barPercent = computed(() =>
+  library.progress?.total ? Math.round((library.progress.done / library.progress.total) * 100) : null
+);
 const analysisLabel = computed(() => `Audio analysis: ${analysisShort.value}. Show details`);
 
 function signOut() {
@@ -234,3 +259,17 @@ function signOut() {
   });
 }
 </script>
+
+<style scoped>
+.header-indeterminate {
+  animation: header-slide 1.2s ease-in-out infinite;
+}
+@keyframes header-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+</style>

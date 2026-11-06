@@ -1,14 +1,23 @@
 <template>
   <Sheet
     :open="open"
-    title="Library"
-    :description="library.isDemo
+    :title="library.job ? 'Import' : 'Library'"
+    :description="library.job ? '' : library.isDemo
       ? `Showing the ${library.total.toLocaleString()}-track sample. Import your own below.`
       : `${library.total.toLocaleString()} tracks on this device · last import: ${library.originLabel}`"
     width="md:w-[520px]"
     @update:open="$emit('update:open', $event)"
   >
-    <div class="space-y-8">
+    <!-- While an import runs (or just finished), show it as a process with
+         steps instead of the list of options. -->
+    <ImportProgress
+      v-if="library.job"
+      @close="$emit('update:open', false)"
+    />
+    <div
+      v-else
+      class="space-y-8"
+    >
       <div
         v-if="!online"
         role="status"
@@ -226,7 +235,7 @@
                     :loading="library.busy && busyWith === p.id"
                     :disabled="library.busy || !online"
                     compact
-                    @run="importSpotify({ source: 'playlist', playlistId: p.id }, p.id)"
+                    @run="importSpotify({ source: 'playlist', playlistId: p.id, title: p.name }, p.id)"
                   />
                 </li>
                 <li
@@ -476,6 +485,7 @@ import Button from './ui/Button.vue';
 import Field from './ui/Field.vue';
 import TextInput from './ui/TextInput.vue';
 import AnalysisStatus from './AnalysisStatus.vue';
+import ImportProgress from './ImportProgress.vue';
 import SourceRow from './SourceRow.vue';
 import { useLibraryStore } from '@/stores/library.js';
 import { useFiltersStore } from '@/stores/filters.js';
@@ -485,7 +495,7 @@ import { EMBED_PROXY } from '@/services/spotifyApi.js';
 import { parseSourceLink } from '@/lib/sourceLinks.js';
 import { useUi } from '@/composables/useUi.js';
 
-defineProps({ open: Boolean });
+const props = defineProps({ open: Boolean });
 const emit = defineEmits(['update:open']);
 
 const library = useLibraryStore();
@@ -546,13 +556,11 @@ async function importLink() {
   if (linkError.value) return;
   busyWith.value = 'link';
   try {
-    await library.importFromLink(link.value);
-    filters.resetAll();
-    announce();
+    const pending = library.importFromLink(link.value);
     link.value = '';
     submittedLink.value = false;
     touchedLink.value = false;
-    emit('update:open', false);
+    await pending;
   } catch {
     /* shown inline via library.error */
   } finally {
@@ -608,12 +616,7 @@ async function loadPlaylists() {
 async function importSpotify(options, tag) {
   busyWith.value = tag;
   try {
-    // Close the sheet once tracks are in so the user sees results arrive; the
-    // header ring keeps showing analysis progress.
-    const done = library.importFromSpotify(options);
-    await done;
-    filters.resetAll();
-    announce();
+    await library.importFromSpotify(options);
   } catch {
     /* shown inline via library.error */
   } finally {
@@ -621,10 +624,67 @@ async function importSpotify(options, tag) {
   }
 }
 
-function announce() {
-  if (library.summary) toasts.push({ title: 'Import complete', description: library.summary, tone: 'success' });
-  if (library.warning) toasts.push({ title: 'Heads up', description: library.warning, tone: 'warning' });
-}
+/**
+ * Once the tracks are in the library the rest (analysis) can run unattended:
+ * show the finished steps for a moment, then get out of the way. The header
+ * keeps showing progress, and a toast reports the end.
+ */
+const AUTO_CLOSE_MS = 1600;
+let autoClose = 0;
+watch(
+  () => library.job?.steps.find((s) => s.key === 'save')?.state,
+  (state) => {
+    if (state !== 'done') return;
+    // New tracks are in: show everything, so they're visible straight away.
+    filters.resetAll();
+    if (library.job?.status !== 'running') return;
+    clearTimeout(autoClose);
+    autoClose = setTimeout(() => {
+      if (library.job?.status === 'running' && props.open) {
+        emit('update:open', false);
+        toasts.push({
+          title: 'Tracks added — measuring tempo and key',
+          description: 'This continues in the background. Progress is at the top of the screen.',
+          action: { label: 'Show progress', run: () => emit('update:open', true) },
+        });
+      }
+    }, AUTO_CLOSE_MS);
+  }
+);
+
+/**
+ * A finished import stays on screen until it has been seen, then clears when
+ * the sheet closes, so the next visit starts at the import options.
+ */
+let seenFinished = false;
+watch(
+  () => [props.open, library.job?.status],
+  ([open, status]) => {
+    const finished = status && status !== 'running';
+    if (open && finished) seenFinished = true;
+    if (!open && finished && seenFinished) {
+      seenFinished = false;
+      library.dismissJob();
+    }
+  }
+);
+
+/** Report the end of an import if the sheet isn't open to show it. */
+watch(
+  () => library.job?.status,
+  (status, previous) => {
+    if (previous !== 'running' || !status || status === 'running' || props.open) return;
+    const job = library.job;
+    const show = { label: 'Details', run: () => emit('update:open', true) };
+    if (status === 'done') {
+      toasts.push({ title: `Imported ${job.title}`, description: job.warning || job.summary, tone: job.warning ? 'warning' : 'success', action: show });
+    } else if (status === 'error') {
+      toasts.push({ title: `Couldn't import ${job.title}`, description: job.error, tone: 'error', action: show });
+    } else {
+      toasts.push({ title: 'Analysis stopped', description: 'Everything finished is saved. Resume from the header any time.', action: show });
+    }
+  }
+);
 
 // ---- DJ files ----------------------------------------------------------------
 const parsed = ref(null);
@@ -663,9 +723,6 @@ async function importAudio(fileList) {
   busyWith.value = 'audio';
   try {
     await library.importAudioFiles(files);
-    filters.resetAll();
-    announce();
-    emit('update:open', false);
   } catch {
     /* library.error */
   } finally {
@@ -676,11 +733,9 @@ async function importAudio(fileList) {
 async function importFile() {
   busyWith.value = 'file';
   try {
-    await library.importParsed(parsed.value);
+    const pending = library.importParsed(parsed.value);
     parsed.value = null;
-    filters.resetAll();
-    announce();
-    emit('update:open', false);
+    await pending;
   } catch {
     /* library.error */
   } finally {
