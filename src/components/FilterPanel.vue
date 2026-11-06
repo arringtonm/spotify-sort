@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-7">
+  <div :class="dense ? 'space-y-5' : 'space-y-7'">
     <!-- Seed mode: key and tempo come from the seed, so say that instead of
          silently disabling the controls. -->
     <section
@@ -29,7 +29,7 @@
 
     <template v-else>
       <section aria-labelledby="f-key">
-        <div class="mb-3 flex items-center justify-between gap-2">
+        <div class="mb-2 flex items-center justify-between gap-2">
           <h3
             id="f-key"
             class="text-sm font-semibold"
@@ -43,6 +43,7 @@
         <CamelotWheel
           v-model="filters.selectedCodes"
           label="Filter by key"
+          :max-size="dense ? 'clamp(220px, calc(100dvh - 470px), 320px)' : '340px'"
           :counts="keyCounts"
           :center-value="filters.selectedCodes.length"
           center-label="keys"
@@ -76,7 +77,7 @@
           </Button>
         </div>
         <p
-          class="mt-2 min-h-10 text-xs leading-5 text-muted"
+          class="mt-1.5 min-h-10 text-xs leading-5 text-muted"
           aria-live="polite"
         >
           {{ keyHint }}
@@ -86,51 +87,45 @@
       <section aria-labelledby="f-tempo">
         <h3
           id="f-tempo"
-          class="mb-1 text-sm font-semibold"
+          class="mb-0.5 text-sm font-semibold"
         >
           Tempo <span class="font-normal text-muted">(BPM)</span>
         </h3>
-        <RangeSlider
-          v-model="tempo"
-          :min="filters.bpmMin"
-          :max="filters.bpmMax"
-          :thumb-labels="['Minimum BPM', 'Maximum BPM']"
-        />
-        <div class="mt-1 grid grid-cols-2 gap-3">
-          <Field
-            v-slot="{ id }"
-            label="Min"
-            :lines="0"
-          >
+        <!-- Min field · slider · max field on one row: exact entry and a
+             quick drag without spending three rows of height. -->
+        <div class="flex items-center gap-3">
+          <div class="w-[4.25rem] shrink-0">
             <TextInput
-              :id="id"
               :model-value="tempo[0]"
               type="number"
               inputmode="numeric"
               :min="filters.bpmMin"
               :max="tempo[1]"
-              class="tabular"
+              aria-label="Minimum BPM"
+              class="px-2 text-center tabular"
               @change="setBound(0, $event.target.value)"
             />
-          </Field>
-          <Field
-            v-slot="{ id }"
-            label="Max"
-            :lines="0"
-          >
+          </div>
+          <RangeSlider
+            v-model="tempo"
+            :min="filters.bpmMin"
+            :max="filters.bpmMax"
+            :thumb-labels="['Minimum BPM', 'Maximum BPM']"
+          />
+          <div class="w-[4.25rem] shrink-0">
             <TextInput
-              :id="id"
               :model-value="tempo[1]"
               type="number"
               inputmode="numeric"
               :min="tempo[0]"
               :max="filters.bpmMax"
-              class="tabular"
+              aria-label="Maximum BPM"
+              class="px-2 text-center tabular"
               @change="setBound(1, $event.target.value)"
             />
-          </Field>
+          </div>
         </div>
-        <div class="mt-2">
+        <div class="mt-1">
           <Switch
             v-model="filters.matchMultiples"
             label="Include half- and double-time"
@@ -201,7 +196,6 @@
 import { computed, ref, watch } from 'vue';
 import { X, Plus, Check, ChevronDown } from '@lucide/vue';
 import Button from './ui/Button.vue';
-import Field from './ui/Field.vue';
 import TextInput from './ui/TextInput.vue';
 import Switch from './ui/Switch.vue';
 import RangeSlider from './ui/RangeSlider.vue';
@@ -209,6 +203,9 @@ import CamelotWheel from './CamelotWheel.vue';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';
 import { codeFor, formatTempo } from '@/lib/trackInfo.js';
+
+/** Tighter spacing and a height-aware wheel for the desktop sidebar. */
+defineProps({ dense: Boolean });
 
 const GENRE_LIMIT = 12;
 

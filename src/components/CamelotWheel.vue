@@ -3,7 +3,8 @@
     ref="root"
     role="group"
     :aria-label="label"
-    class="relative mx-auto aspect-square w-full max-w-[340px] select-none"
+    class="relative mx-auto aspect-square w-full select-none"
+    :style="{ maxWidth: maxSize }"
     @keydown="onKeydown"
   >
     <svg
@@ -95,6 +96,8 @@ const props = defineProps({
   counts: { type: Object, default: null },
   centerValue: { type: [String, Number], default: '' },
   centerLabel: { type: String, default: '' },
+  /** Any CSS length; the sidebar shrinks the wheel on short screens. */
+  maxSize: { type: String, default: '340px' },
 });
 const emit = defineEmits(['update:modelValue']);
 

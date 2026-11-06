@@ -85,6 +85,13 @@
 }
 
 @layer base {
+  html {
+    /* Always keep the page scrollbar's track: a short, filtered list would
+       otherwise remove it and the centred layout would jump sideways.
+       Invisible with overlay scrollbars; an empty track with classic ones. */
+    overflow-y: scroll;
+  }
+
   html,
   body {
     background: var(--bg);

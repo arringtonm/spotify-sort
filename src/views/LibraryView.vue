@@ -2,10 +2,12 @@
   <div class="mx-auto max-w-[1600px] px-3 sm:px-5 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[340px_minmax(0,1fr)]">
     <!-- Desktop: filters always visible beside results (interactive filtering). -->
     <aside
-      class="sticky top-[var(--header-h)] hidden max-h-[calc(100dvh-var(--header-h)-var(--player-h))] self-start overflow-y-auto overscroll-contain py-6 pr-1 lg:block"
+      class="sticky top-[var(--header-h)] hidden max-h-[calc(100dvh-var(--header-h)-var(--player-h))] self-start overflow-y-auto overscroll-contain pt-3 pb-4 pr-1 [scrollbar-gutter:stable] lg:block"
       aria-labelledby="filters-heading"
     >
-      <div class="mb-5 flex items-center justify-between">
+      <!-- Fixed-height row; Reset is always laid out and only hidden when
+           there's nothing to reset, so the panel below never moves. -->
+      <div class="mb-2 flex h-9 items-center justify-between">
         <h2
           id="filters-heading"
           class="text-base font-semibold"
@@ -13,16 +15,18 @@
           Filters
         </h2>
         <Button
-          v-if="filters.activeFilterCount"
           variant="ghost"
           size="sm"
           class="text-accent"
+          :class="!filters.activeFilterCount && 'invisible'"
+          :aria-hidden="!filters.activeFilterCount || undefined"
+          :tabindex="filters.activeFilterCount ? undefined : -1"
           @click="filters.resetAll()"
         >
           Reset
         </Button>
       </div>
-      <FilterPanel />
+      <FilterPanel dense />
     </aside>
 
     <main
@@ -104,7 +108,7 @@
             class="shrink-0 text-sm text-muted"
             aria-live="polite"
           >
-            <strong class="font-semibold text-text tabular">{{ filters.rows.length.toLocaleString() }}</strong>
+            <strong class="inline-block min-w-[5ch] text-right font-semibold text-text tabular">{{ filters.rows.length.toLocaleString() }}</strong>
             {{ filters.ordered ? 'tracks in this set' : filters.seedTrack ? 'compatible tracks' : `of ${library.total.toLocaleString()} tracks` }}
           </h1>
           <AppliedFilters class="flex-1" />
