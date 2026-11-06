@@ -87,6 +87,25 @@
           { value: 'set', label: 'Build a set', icon: ListOrdered },
         ]"
       />
+      <div
+        v-if="sidebar"
+        class="space-y-1.5"
+      >
+        <span
+          id="prio-label"
+          class="text-sm text-muted"
+        >Best match favours</span>
+        <Segmented
+          v-model="filters.mixPriority"
+          label="Best match favours"
+          :options="[
+            { value: 'balanced', label: 'Balance' },
+            { value: 'key', label: 'Key' },
+            { value: 'tempo', label: 'Tempo' },
+            { value: 'vibe', label: 'Vibe' },
+          ]"
+        />
+      </div>
       <Stepper
         v-model="filters.bpmTolerance"
         label="Tempo range"

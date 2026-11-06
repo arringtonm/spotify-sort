@@ -122,6 +122,7 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
             keyConfident: merged.keyConfident ?? null,
             keyStrength: merged.keyStrength ?? null,
             deezerId: entry?.deezerId ?? null,
+            features: merged.features ?? null,
             analysisState: state,
             attempts,
             lastError: entry?.error ?? null,

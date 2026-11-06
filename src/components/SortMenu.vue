@@ -92,6 +92,7 @@ const directionLabels = {
   title: ['A → Z', 'Z → A'],
   tempo: ['Slowest first', 'Fastest first'],
   camelot: ['1A → 12B', '12B → 1A'],
+  energy: ['Calmest first', 'Most energetic first'],
   durationMs: ['Shortest first', 'Longest first'],
 };
 const directions = computed(() => {

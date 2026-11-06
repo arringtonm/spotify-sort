@@ -115,9 +115,10 @@ export function buildSet(
       direction === 0 ? true : direction > 0 ? t.tempo >= current.tempo : t.tempo <= current.tempo
     );
     const pool = forward.length ? forward : candidates;
-    // `penalty` lets the caller steer away from risky picks (e.g. uncertain keys)
-    // without excluding them: it's added to the tempo step as a cost.
-    const cost = (t) => Math.abs(t.tempo - current.tempo) + penalty(t);
+    // `penalty(track, previous)` lets the caller steer the choice (uncertain keys,
+    // genre and energy fit) without excluding anything: it's added to the tempo
+    // step as a cost.
+    const cost = (t) => Math.abs(t.tempo - current.tempo) + penalty(t, current);
     const next = pool.reduce((best, t) => (cost(t) < cost(best) ? t : best));
 
     path.push({ track: next, relation: tempoRelation(current.tempo, next.tempo, bpmTolerance) });

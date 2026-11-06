@@ -148,6 +148,31 @@
       </section>
     </template>
 
+    <!-- Energy: measured from the audio; offered once some tracks have it. -->
+    <section
+      v-if="filters.energyMeasured"
+      aria-labelledby="f-energy"
+    >
+      <div class="mb-0.5 flex items-baseline justify-between">
+        <h3
+          id="f-energy"
+          class="text-sm font-semibold"
+        >
+          Energy <span class="font-normal text-muted">(1–10)</span>
+        </h3>
+        <span class="font-mono text-sm tabular">{{ filters.energyRange[0] }}–{{ filters.energyRange[1] }}</span>
+      </div>
+      <RangeSlider
+        v-model="filters.energyRange"
+        :min="1"
+        :max="10"
+        :thumb-labels="['Minimum energy', 'Maximum energy']"
+      />
+      <p class="text-xs leading-5 text-muted">
+        {{ energyHint }}
+      </p>
+    </section>
+
     <section
       v-if="filters.genreOptions.length"
       aria-labelledby="f-genre"
@@ -246,6 +271,13 @@ const library = useLibraryStore();
 const showAllGenres = ref(false);
 const crates = useCratesStore();
 const usageCount = computed(() => crates.usage.size);
+const energyHint = computed(() => {
+  const measured = filters.energyMeasured;
+  const total = library.tracks.length;
+  return measured < total
+    ? `Measured for ${measured.toLocaleString()} of ${total.toLocaleString()} tracks; the rest appear once analysed.`
+    : 'How hard a track drives: busyness, loudness, tempo and groove.';
+});
 
 const visibleGenres = computed(() =>
   showAllGenres.value ? filters.genreOptions : filters.genreOptions.slice(0, GENRE_LIMIT)

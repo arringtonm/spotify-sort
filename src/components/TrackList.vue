@@ -155,7 +155,7 @@
                 ><SourceIcons
                   :track="track"
                   class="mr-1"
-                />{{ track.artist }}</span>
+                />{{ track.artist }}<template v-if="!compact && track.matchReasons?.length"><span class="text-subtle"> · {{ track.matchReasons.slice(0, 3).join(' · ') }}</span></template></span>
               </span>
             </button>
           </div>
@@ -190,6 +190,14 @@
             class="flex justify-start"
           >
             <KeyBadge :track="track" />
+          </div>
+
+          <!-- Energy (wide only) -->
+          <div
+            role="cell"
+            class="hidden @2xl:flex"
+          >
+            <EnergyMeter :track="track" />
           </div>
 
           <!-- Length (wide only) -->
@@ -237,6 +245,7 @@ import { Play, Pause, Disc3, ArrowUp, Shuffle } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import KeyBadge from './KeyBadge.vue';
 import SourceIcons from './SourceIcons.vue';
+import EnergyMeter from './EnergyMeter.vue';
 import TrackMenu from './TrackMenu.vue';
 import { useFiltersStore } from '@/stores/filters.js';
 import { usePlayerStore } from '@/stores/player.js';
@@ -278,6 +287,7 @@ const columns = computed(() =>
     { key: 'genres', label: 'Genre', class: 'hidden @4xl:flex' },
     { key: 'tempo', label: 'BPM', sortable: true },
     { key: 'camelot', label: 'Key', sortable: true },
+    { key: 'energy', label: 'Energy', sortable: true, class: 'hidden @2xl:flex' },
     { key: 'durationMs', label: 'Length', sortable: true },
     { key: 'actions', label: '', sr: 'Actions', class: 'justify-end' },
   ].filter(Boolean)
@@ -285,8 +295,8 @@ const columns = computed(() =>
 
 const gridClass = computed(() =>
   props.ordered
-    ? 'grid-cols-[2rem_minmax(0,1fr)_auto_4.75rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6rem_4rem_4rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,11rem)_6.5rem_6rem_4rem_4rem]'
-    : 'grid-cols-[minmax(0,1fr)_auto_4.75rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[minmax(0,1fr)_6.5rem_6rem_4rem_7.5rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_6.5rem_6rem_4rem_7.5rem]'
+    ? 'grid-cols-[2rem_minmax(0,1fr)_auto_4.75rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_6rem_5rem_4rem_4rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,11rem)_6.5rem_6rem_5rem_4rem_4rem]'
+    : 'grid-cols-[minmax(0,1fr)_auto_4.75rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[minmax(0,1fr)_6.5rem_6rem_5rem_4rem_7.5rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_6.5rem_6rem_5rem_4rem_7.5rem]'
 );
 
 function ariaSort(col) {

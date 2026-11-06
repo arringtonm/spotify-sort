@@ -113,6 +113,7 @@ async function analyseLocalFile(track) {
     keyConfident: analysis.keyConfident,
     keySource: 'analysis',
     analysedFrom: 'file',
+    features: analysis.features ?? null,
     // The waveform of a 2-minute slice would mislead; playback builds the full one.
     waveform: null,
   };
@@ -160,6 +161,7 @@ export async function analyseTrack(track) {
       keyStrength: analysis.keyStrength,
       keyConfident: analysis.keyConfident,
       keySource: 'analysis',
+      features: analysis.features ?? null,
       // Carried out of band: the queue stores it separately (binary), never in
       // the JSON enrichment cache.
       waveform: analysis.waveform ?? null,
@@ -188,10 +190,14 @@ export function applyEnrichment(track, entry) {
     mode: keptKey ? track.mode : (entry.mode ?? null),
     pitchClass: keptKey ? track.pitchClass : (entry.pitchClass ?? null),
     deezerId: entry.deezerId ?? track.deezerId ?? null,
-    tempoSource: track.tempo != null ? 'existing' : (entry.tempoSource ?? null),
-    keySource: keptKey ? 'existing' : (entry.keySource ?? null),
-    keyStrength: keptKey ? null : (entry.keyStrength ?? null),
-    keyConfident: keptKey ? true : Boolean(entry.keyConfident),
+    // Kept values keep their own provenance (Serato, a correction, an earlier
+    // analysis and its confidence) — re-analysing to add energy must not turn a
+    // low-confidence estimate into "existing".
+    tempoSource: track.tempo != null ? (track.tempoSource ?? 'existing') : (entry.tempoSource ?? null),
+    keySource: keptKey ? (track.keySource ?? 'existing') : (entry.keySource ?? null),
+    keyStrength: keptKey ? (track.keyStrength ?? null) : (entry.keyStrength ?? null),
+    keyConfident: keptKey ? (track.keyConfident ?? true) : Boolean(entry.keyConfident),
+    features: entry.features ?? track.features ?? null,
     enrichStatus: entry.status,
   };
 }

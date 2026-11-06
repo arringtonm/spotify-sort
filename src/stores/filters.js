@@ -15,19 +15,22 @@ import {
   fromCamelotCode,
 } from '../lib/camelot.js';
 import { displayName } from '../lib/musicalKey.js';
-import { camelotRank, codeFor, keyRisk, matchesSource, trackSources, SOURCE_FILTERS } from '../lib/trackInfo.js';
+import { camelotRank, codeFor, matchesSource, trackSources, SOURCE_FILTERS } from '../lib/trackInfo.js';
 import { useLibraryStore } from './library.js';
 import { useCratesStore } from './crates.js';
+import { energyLevel } from '../lib/energy.js';
+import { mixScore } from '../lib/mixScore.js';
 
 export const SORT_FIELDS = [
   { key: 'artist', label: 'Artist' },
   { key: 'title', label: 'Title' },
   { key: 'tempo', label: 'Tempo' },
   { key: 'camelot', label: 'Key' },
+  { key: 'energy', label: 'Energy' },
   { key: 'durationMs', label: 'Length' },
 ];
 
-const RANKS = { camelot: camelotRank };
+const RANKS = { camelot: camelotRank, energy: energyLevel };
 
 export const useFiltersStore = defineStore('filters', {
   state: () => ({
@@ -43,12 +46,16 @@ export const useFiltersStore = defineStore('filters', {
     sourceFilter: 'all',
     // Hide tracks already used in a past mixtape (an archive folder of crates).
     hideUsed: false,
+    // Energy 1–10 (measured locally). Full range = no filter.
+    energyRange: [1, 10],
     seedTrack: null,
     // Genre-dependent: 3 suits house, wider suits open-format sets.
     bpmTolerance: 3,
     setLength: 10,
     setDirection: 1,
     setMode: false,
+    // What "best match" weighs most: 'balanced' | 'key' | 'tempo' | 'vibe'.
+    mixPriority: 'balanced',
     sort: { key: 'artist', direction: 'asc' },
     sortBeforeSeed: null,
   }),
@@ -127,6 +134,14 @@ export const useFiltersStore = defineStore('filters', {
       return c;
     },
 
+    energyActive() {
+      return this.energyRange[0] > 1 || this.energyRange[1] < 10;
+    },
+    /** How many tracks have an energy reading (the filter appears once some do). */
+    energyMeasured() {
+      return useLibraryStore().tracks.reduce((n, t) => n + (t.features ? 1 : 0), 0);
+    },
+
     /** Only offer the Source filter when there is more than one source. */
     hasMultipleSources() {
       const c = this.sourceCounts;
@@ -143,6 +158,15 @@ export const useFiltersStore = defineStore('filters', {
         let out = pool;
         if (this.genres.length) out = out.filter((t) => (t.genres || []).some((g) => this.genres.includes(g)));
         if (this.sourceFilter !== 'all') out = out.filter((t) => matchesSource(t, this.sourceFilter));
+        if (this.energyActive) {
+          const [lo, hi] = this.energyRange;
+          const seedId = this.seedTrack?.id;
+          out = out.filter((t) => {
+            if (t.id === seedId) return true;
+            const e = energyLevel(t);
+            return e != null && e >= lo && e <= hi;
+          });
+        }
         if (this.hideUsed && usage.size) {
           const seedId = this.seedTrack?.id;
           out = out.filter((t) => t.id === seedId || !usage.has(t.id));
@@ -157,7 +181,10 @@ export const useFiltersStore = defineStore('filters', {
         length: this.setLength,
         bpmTolerance: this.bpmTolerance,
         direction: this.setDirection,
-        penalty: keyRisk,
+        // Genre and energy fit steer each step; the score's tempo part is already
+        // the step cost, so weigh the rest.
+        penalty: (t, prev) =>
+          mixScore(prev, t, { tolerance: this.bpmTolerance, priority: this.mixPriority }).score * 1.5,
       });
     },
 
@@ -194,13 +221,15 @@ export const useFiltersStore = defineStore('filters', {
         if (this.sort.key !== 'match') {
           return sortTracks(matches, { ...this.sort, rank: RANKS[this.sort.key] });
         }
-        // Best match: closest tempo, with uncertain keys pushed down the list.
-        const seedTempo = this.seedTrack.tempo;
-        const score = (t) => Math.abs(t.tempo - seedTempo) + keyRisk(t);
+        // Best match: tempo, key move and confidence, shared genre and energy,
+        // with the reasons shown on each row.
+        const options = { tolerance: this.bpmTolerance, priority: this.mixPriority };
         return matches
-          .map((t) => ({ t, s: score(t) }))
-          .sort((a, b) => a.s - b.s)
-          .map(({ t }) => t);
+          .map((t) => {
+            const { score, reasons } = mixScore(this.seedTrack, t, options);
+            return { ...t, matchScore: score, matchReasons: reasons };
+          })
+          .sort((a, b) => a.matchScore - b.matchScore);
       }
 
       const filtered = filterTracks(this.genrePool(library.tracks), {
@@ -233,6 +262,7 @@ export const useFiltersStore = defineStore('filters', {
           chips.push({ id: 'source', label: SOURCE_FILTERS.find((f) => f.value === this.sourceFilter)?.label ?? this.sourceFilter });
         }
         if (this.hideUsed) chips.push({ id: 'used', label: 'Not in past mixes' });
+        if (this.energyActive) chips.push({ id: 'energy', label: `Energy ${this.energyRange[0]}–${this.energyRange[1]}` });
       };
       if (this.seedTrack) {
         this.genres.forEach((g) => chips.push({ id: `genre:${g}`, label: g }));
@@ -326,6 +356,7 @@ export const useFiltersStore = defineStore('filters', {
       this.includeUnknown = true;
       this.sourceFilter = 'all';
       this.hideUsed = false;
+      this.energyRange = [1, 10];
     },
 
     removeFilter(id) {
@@ -337,6 +368,7 @@ export const useFiltersStore = defineStore('filters', {
       } else if (id === 'unknown') this.includeUnknown = true;
       else if (id === 'source') this.sourceFilter = 'all';
       else if (id === 'used') this.hideUsed = false;
+      else if (id === 'energy') this.energyRange = [1, 10];
       else if (id.startsWith('genre:')) {
         const genre = id.slice('genre:'.length);
         this.genres = this.genres.filter((g) => g !== genre);
