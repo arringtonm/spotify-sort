@@ -251,3 +251,50 @@ export async function artistTop(artistId, limit = 5) {
   const data = await jsonp(`/artist/${artistId}/top?limit=${limit}`);
   return (data?.data ?? []).map((row) => ({ ...normaliseDeezerTrack(row), previewUrl: row.preview || null })).filter((t) => t.deezerId);
 }
+
+// ---- Artwork ---------------------------------------------------------------
+
+/**
+ * Album cover for a track, checked against the title and artist so a search
+ * hit for a different song never supplies the art. The same song on another
+ * release (single vs album) is fine — a cover is a cover.
+ */
+export async function findCover({ deezerId, artist, title }) {
+  const { titleCore, artistTokens } = await import('../lib/trackMatch.js');
+  const wantTitle = titleCore(title);
+  const wantArtists = artistTokens(artist);
+  const plausible = (row) => {
+    if (!row?.album) return false;
+    const core = titleCore(row.title);
+    const titleOk = core && wantTitle && (core === wantTitle || core.startsWith(wantTitle) || wantTitle.startsWith(core));
+    const theirs = artistTokens([row.artist?.name, ...(row.contributors ?? []).map((c) => c.name)].join(', '));
+    return titleOk && wantArtists.some((a) => theirs.includes(a));
+  };
+  const cover = (row) => row.album.cover_medium || row.album.cover || null;
+
+  if (deezerId) {
+    const row = await jsonp(`/track/${deezerId}`).catch((error) => {
+      if (transient(error)) throw error;
+      return null;
+    });
+    if (plausible(row)) return cover(row);
+  }
+  if (!artist || !title) return null;
+  for (const query of [`artist:"${artist}" track:"${title}"`, `${artist} ${title}`]) {
+    let found;
+    try {
+      found = await jsonp(`/search?limit=5&q=${encodeURIComponent(query)}`);
+    } catch (error) {
+      if (transient(error)) throw error;
+      continue;
+    }
+    const hit = (found?.data ?? []).find(plausible);
+    if (hit) return cover(hit);
+  }
+  return null;
+}
+
+/** Rate limits and network failures mean "try later", not "no cover exists". */
+function transient(error) {
+  return error?.isQuota || /timed out|request failed/i.test(error?.message ?? '');
+}

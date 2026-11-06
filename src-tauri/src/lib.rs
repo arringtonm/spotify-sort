@@ -298,22 +298,42 @@ async fn spotify_sign_in(app: AppHandle, url: String, redirect: String) -> Resul
     if let Some(existing) = app.get_webview_window("spotify-auth") {
         let _ = existing.close();
     }
-    let handle = app.clone();
+    // Hand the redirect (carrying the auth code) to the main window once, then
+    // close the sign-in window. Caught at navigation; the page-load hook is a
+    // second net in case the webview doesn't report a server redirect.
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let finish = {
+        let handle = app.clone();
+        let done = done.clone();
+        move |target: String| {
+            if done.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            let _ = handle.emit("spotify-callback", target);
+            let h = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(w) = h.get_webview_window("spotify-auth") {
+                    let _ = w.close();
+                }
+            });
+        }
+    };
+    let on_nav = finish.clone();
+    let nav_redirect = redirect.clone();
     WebviewWindowBuilder::new(&app, "spotify-auth", WebviewUrl::External(parsed))
         .title("Sign in to Spotify")
         .inner_size(480.0, 760.0)
         .on_navigation(move |target| {
-            if target.as_str().starts_with(&redirect) {
-                let _ = handle.emit("spotify-callback", target.to_string());
-                let h = handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Some(w) = h.get_webview_window("spotify-auth") {
-                        let _ = w.close();
-                    }
-                });
+            if target.as_str().starts_with(&nav_redirect) {
+                on_nav(target.to_string());
                 return false;
             }
             true
+        })
+        .on_page_load(move |_, payload| {
+            if payload.url().as_str().starts_with(&redirect) {
+                finish(payload.url().to_string());
+            }
         })
         .build()
         .map_err(|e| e.to_string())?;
@@ -346,6 +366,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
     let file = SubmenuBuilder::new(app, "File")
         .item(&item("import-serato", "Sync Serato Library", Some("CmdOrCtrl+Shift+I"))?)
         .item(&item("import-music", "Import Music Library", None)?)
+        .item(&item("find-artwork", "Find Missing Artwork", None)?)
         .item(&item("import", "Import…", Some("CmdOrCtrl+I"))?)
         .separator()
         .item(&item("new-crate", "New Crate…", Some("CmdOrCtrl+N"))?)

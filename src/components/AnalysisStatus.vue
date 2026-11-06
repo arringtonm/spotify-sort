@@ -77,13 +77,21 @@
       >
         <Gauge /> Measure energy for {{ energyBacklog.toLocaleString() }}
       </Button>
+      <Button
+        v-if="!library.busy && artworkBacklog"
+        variant="secondary"
+        size="sm"
+        @click="run(library.findMissingArtwork)"
+      >
+        <ImageIcon /> Find artwork for {{ artworkBacklog.toLocaleString() }}
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { Play, Square, RotateCcw, Gauge } from '@lucide/vue';
+import { Play, Square, RotateCcw, Gauge, Image as ImageIcon } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import { useLibraryStore } from '@/stores/library.js';
 
@@ -111,10 +119,12 @@ const eta = computed(() => {
 });
 // Tracks analysed before energy existed (or imported with BPM/key already).
 const energyBacklog = computed(() => library.energyBacklog().length);
+const artworkBacklog = computed(() => (library.isDemo ? 0 : library.artworkBacklog().length));
+const analysing = computed(() => library.busy && library.activeRun?.kind !== 'artwork');
 
 // Counts are refreshed at the end of a run; while it runs, add its progress so
 // the numbers move with the bar.
-const runDone = computed(() => (library.busy && library.progress?.total ? library.progress.done : 0));
+const runDone = computed(() => (analysing.value && library.progress?.total ? library.progress.done : 0));
 const stats = computed(() => [
   { label: 'Analysed', value: library.counts.done + runDone.value },
   { label: 'Waiting', value: Math.max(0, library.counts.pending - runDone.value) },

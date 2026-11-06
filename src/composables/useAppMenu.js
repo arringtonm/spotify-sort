@@ -27,6 +27,7 @@ export function useAppMenu() {
   const actions = {
     'import-serato': () => library.importSerato(),
     'import-music': () => library.importMusicLibrary(),
+    'find-artwork': () => library.findMissingArtwork(),
     import: () => (ui.libraryOpen.value = true),
     'new-crate': () => crates.requestCreate([], undefined, { openAfter: true }),
     'import-mixtapes': () => (ui.mixtapeImportOpen.value = true),

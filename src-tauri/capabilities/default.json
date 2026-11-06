@@ -13,6 +13,7 @@
       "allow": [
         { "url": "https://api.deezer.com/*" },
         { "url": "https://open.spotify.com/embed/*" },
+        { "url": "https://accounts.spotify.com/api/token" },
         { "url": "https://docs.google.com/spreadsheets/*" },
         { "url": "https://*.googleusercontent.com/*" }
       ]

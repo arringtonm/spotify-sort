@@ -604,6 +604,75 @@ export const useLibraryStore = defineStore('library', {
       });
     },
 
+    /** Tracks with no cover that haven't already been looked up without luck. */
+    artworkBacklog() {
+      return this.raw.filter((t) => !t.artwork && !t.artworkChecked && t.title && t.title !== 'Unknown');
+    },
+
+    /**
+     * Find album art for every track without it (see services/artwork.js).
+     * Saved as it goes, so stopping keeps what was found; tracks with no art
+     * anywhere are remembered and skipped next time.
+     */
+    findMissingArtwork() {
+      if (this.busy) {
+        useToastStore().push({ title: 'Something else is running', description: 'Try again when it finishes.' });
+        return Promise.resolve();
+      }
+      return this.withBusy(async () => {
+        const { findArtworkFor } = await import('../services/artwork.js');
+        const todo = this.artworkBacklog();
+        const run = {
+          kind: 'artwork',
+          cancelled: false,
+          cancel() {
+            this.cancelled = true;
+          },
+        };
+        this.activeRun = run;
+
+        const index = new Map(this.raw.map((t, i) => [t.id, i]));
+        let staged = [];
+        const flush = async () => {
+          if (!staged.length) return;
+          const batch = staged;
+          staged = [];
+          await patchTracks(batch);
+          const next = this.raw.slice();
+          for (const { id, patch } of batch) {
+            const i = index.get(id);
+            if (i !== undefined) next[i] = { ...next[i], ...patch };
+          }
+          this.raw = next;
+        };
+        let pending = Promise.resolve();
+
+        const stats = await findArtworkFor(todo, {
+          shouldStop: () => run.cancelled,
+          onResult: (track, result, failed) => {
+            if (failed) return;
+            staged.push({ id: track.id, patch: result ?? { artworkChecked: true } });
+            if (staged.length >= 25) pending = pending.then(flush);
+          },
+          onProgress: ({ done, found, total }) =>
+            this.setProgress(`Finding artwork — ${done.toLocaleString()} of ${total.toLocaleString()} (${found.toLocaleString()} found)`, done, total),
+        });
+        await pending;
+        await flush();
+
+        const fromFiles = this.raw.filter((t) => t.artworkSource === 'file').length;
+        this.summary =
+          `Found artwork for ${stats.found.toLocaleString()} of ${stats.done.toLocaleString()} tracks` +
+          (fromFiles ? ` (${fromFiles.toLocaleString()} from your own files).` : '.');
+        useToastStore().push({
+          title: run.cancelled ? 'Stopped finding artwork' : 'Artwork done',
+          description: this.summary,
+          tone: 'success',
+        });
+        return stats;
+      });
+    },
+
     retryFailed() {
       return this.withBusy(async () => {
         const retryable = selectRetryable(this.raw);

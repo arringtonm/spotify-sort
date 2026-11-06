@@ -12,7 +12,7 @@
  *    an accepted trade-off for a locally-run personal tool with no backend.
  */
 
-import { isTauri, invoke, once } from '../platform/index.js';
+import { isTauri, invoke, once, nativeFetch } from '../platform/index.js';
 
 const AUTH_HOST = 'https://accounts.spotify.com';
 const STORAGE_KEY = 'spotify-sort.tokens';
@@ -142,7 +142,9 @@ export function redirectDiagnostics() {
     redirectUri: REDIRECT_URI,
     currentOrigin,
     registeredOrigin,
-    originMatches: registeredOrigin === currentOrigin,
+    // The desktop app catches the redirect in its own sign-in window, so the
+    // page's origin (tauri://localhost) never has to match.
+    originMatches: isTauri || registeredOrigin === currentOrigin,
     browsingLocalhost: currentOrigin.includes('localhost'),
   };
 }
@@ -156,9 +158,7 @@ export async function buildAuthorizeUrl() {
   if (!REDIRECT_URI) throw new Error('VITE_SPOTIFY_REDIRECT_URI is not set');
 
   const diagnostics = redirectDiagnostics();
-  // The desktop app catches the redirect itself (see spotify_sign_in in
-  // src-tauri), so its own origin doesn't need to match.
-  if (!isTauri && !diagnostics.originMatches) {
+  if (!diagnostics.originMatches) {
     throw new Error(
       `You are browsing ${diagnostics.currentOrigin} but the redirect URI is ` +
         `${diagnostics.redirectUri}. Those are different origins, so the sign-in would ` +
@@ -204,7 +204,8 @@ export async function login() {
 }
 
 async function postToken(body) {
-  const response = await fetch(`${AUTH_HOST}/api/token`, {
+  // Native in the desktop app: its tauri:// origin is not one Spotify expects.
+  const response = await nativeFetch(`${AUTH_HOST}/api/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...body }),

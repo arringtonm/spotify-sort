@@ -96,7 +96,7 @@
             :collision-padding="12"
           >
             <h2 class="mb-3 text-sm font-semibold">
-              Audio analysis
+              Analysis and artwork
             </h2>
             <AnalysisStatus />
           </PopoverContent>
@@ -245,7 +245,10 @@ const themeOptions = [
 const outstanding = computed(() => library.counts.pending + library.counts.failed);
 // Also shown while tracks still need an energy reading, so that's findable.
 const showAnalysis = computed(
-  () => library.busy || outstanding.value > 0 || (!library.isDemo && library.energyBacklog().length > 0)
+  () =>
+    library.busy ||
+    outstanding.value > 0 ||
+    (!library.isDemo && (library.energyBacklog().length > 0 || library.artworkBacklog().length > 0))
 );
 const ring = computed(() => {
   if (library.progress?.total) return library.progress.done / library.progress.total;
