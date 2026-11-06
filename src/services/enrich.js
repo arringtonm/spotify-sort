@@ -92,12 +92,29 @@ export function middleSegment({ channels, length, sampleRate }, seconds = 120) {
   return { channels: [mono], length: take, sampleRate };
 }
 
+/**
+ * At most two whole files decoded at once: a 7-minute stereo decode is ~150 MB
+ * (plus a copy), and the queue runs four lanes.
+ */
+let decoding = 0;
+const waiting = [];
+async function withDecodeSlot(run) {
+  if (decoding >= 2) await new Promise((resolve) => waiting.push(resolve));
+  decoding++;
+  try {
+    return await run();
+  } finally {
+    decoding--;
+    waiting.shift()?.();
+  }
+}
+
 /** Analyse the user's own copy of a track (Serato), when this build can read files. */
 async function analyseLocalFile(track) {
   const { readAudioFile, canReadLocalLibraries } = await import('./localLibraries.js');
   if (!canReadLocalLibraries) return null;
-  const pcm = await decodeAudio(await readAudioFile(track.serato.path));
-  const segment = middleSegment(pcm);
+  // Decode, then keep only a mono middle segment so the full PCM can be freed.
+  const segment = await withDecodeSlot(async () => middleSegment(await decodeAudio(await readAudioFile(track.serato.path))));
   const analysis = await analyseInWorker(segment.channels, segment.length, segment.sampleRate);
   return {
     id: track.id,
