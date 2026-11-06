@@ -85,6 +85,9 @@ export const useLibraryStore = defineStore('library', {
       return state.raw.map((track) => overrides.apply(track));
     },
     isDemo: (state) => state.origin === 'demo',
+    /** What the header calls this collection: imports merge, so it's "your library". */
+    libraryLabel: (state) => (state.origin === 'demo' ? 'Sample library' : 'Your library'),
+    /** The most recent import, for context in the Library sheet. */
     originLabel: (state) =>
       state.originDetail?.name ??
       ({

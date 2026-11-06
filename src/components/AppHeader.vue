@@ -19,11 +19,11 @@
       <Button
         variant="secondary"
         class="min-w-0 max-w-[60vw] justify-start sm:max-w-xs"
-        :aria-label="`Library: ${library.originLabel}, ${library.total} tracks. Change source`"
+        :aria-label="`${library.libraryLabel}, ${library.total} tracks. Import or change source`"
         @click="$emit('open-library')"
       >
         <Library class="text-muted" />
-        <span class="truncate">{{ library.originLabel }}</span>
+        <span class="truncate">{{ library.libraryLabel }}</span>
         <span class="text-muted tabular">{{ library.total.toLocaleString() }}</span>
         <ChevronDown class="text-muted" />
       </Button>

@@ -2,7 +2,9 @@
   <Sheet
     :open="open"
     title="Library"
-    :description="`${library.originLabel} · ${library.total.toLocaleString()} tracks on this device`"
+    :description="library.isDemo
+      ? `Showing the ${library.total.toLocaleString()}-track sample. Import your own below.`
+      : `${library.total.toLocaleString()} tracks on this device · last import: ${library.originLabel}`"
     width="md:w-[520px]"
     @update:open="$emit('update:open', $event)"
   >
