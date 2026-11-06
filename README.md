@@ -3,7 +3,9 @@
 A DJ tool for harmonic mixing: load a library, filter it by tempo and key, audition tracks,
 and build sets where every track mixes into the next.
 
-Vue 3.5 · Vuetify 4.1 · Vite 8 · Pinia · Vue Router · ESLint 10 · `node:test`
+Vue 3.5 · Reka UI · Tailwind 4 · Vite 8 · Pinia · Vue Router · vite-plugin-pwa · ESLint 10 · `node:test`
+
+Installable as an app (PWA), works offline for your stored library, dark by default.
 
 ## Quick start
 
@@ -18,7 +20,8 @@ npm run dev               # http://127.0.0.1:5173
 | `npm run dev` | Dev server, binds `127.0.0.1` |
 | `npm run build` | → `dist/` |
 | `npm run preview` | Serve the build |
-| `npm test` | 42 tests, `node:test`, no framework |
+| `npm test` | 89 tests, `node:test`, no framework |
+| `npx pwa-assets-generator` | Regenerate icons from `public/logo.svg` |
 | `npm run lint` / `lint:fix` | ESLint flat config |
 | `node scripts/validate-analyzer.mjs [n]` | Re-measure analyser accuracy |
 
@@ -34,10 +37,27 @@ Rekordbox (`.xml`), Traktor (`.nml`), or CSV (which is how Serato and Mixed In K
 These tools analysed the whole file offline, so their BPM and key beat anything derivable
 from a 30-second preview. Imported values are trusted outright and skip analysis entirely.
 
-**2. Spotify — Liked Songs, your playlists, or a pasted playlist link.**
-Capped at 5 allowlisted accounts by Spotify's development mode.
+**2. A link — Spotify or Deezer playlists, albums and tracks.**
+Paste a share link into the Library sheet, paste it anywhere in the app, or (installed on
+Android) *Share* it from the Spotify or Deezer app straight into Spotify Sort.
 
-**3. The bundled 1,065-track sample**, shown when signed out.
+- **Deezer links** need no sign-in and arrive with Deezer IDs and ISRCs.
+- **Spotify albums and tracks**, and **playlists you own or collaborate on**, come through
+  the Web API.
+- **Other Spotify playlists** (someone else's, Spotify's editorial lists, or any Spotify link
+  while signed out) are read from Spotify's public embed page via a small proxy — the Vite
+  dev server locally, a Cloudflare Worker in production (`proxy/`, see its README). This is
+  **unofficial**: it can break without notice and may cut long playlists short, and the UI
+  says so.
+
+**3. Spotify — Liked Songs or your playlists.** Capped at 5 allowlisted accounts by
+Spotify's development mode.
+
+**4. Audio files on your device.** Drop MP3/AAC/WAV/AIFF/FLAC files to analyse whole tracks
+locally: far better key estimates than a 30s preview, plus a full-length waveform. Nothing
+is uploaded or stored except the results.
+
+**5. The bundled 1,065-track sample**, shown until you import something.
 
 ## Why the analysis pipeline exists
 
@@ -76,7 +96,7 @@ What rescues key is that Essentia's `strength` predicts correctness:
 Keys at or above `0.90` show `~` and can seed a mix. Below it they show `?`, render dimmed,
 and **cannot** seed a mix. `KEY_CONFIDENCE_THRESHOLD` lives in `src/lib/analyzeAudio.js`.
 
-**And you can always overrule it.** The pencil on any row sets the key, mode or BPM by hand.
+**And you can always overrule it.** “Correct tempo or key” in any row's menu sets them by hand.
 Manual corrections outrank Spotify, Deezer and the analyser, persist in IndexedDB, and
 survive re-imports and analyser upgrades.
 
@@ -91,12 +111,10 @@ survive re-imports and analyser upgrades.
 - **Cache entries are versioned.** Each carries the `ANALYZER_VERSION` that produced it;
   bumping it transparently recomputes rather than serving stale numbers forever.
 - **Preview URLs are signed and short-lived**, so they are fetched at press time.
-- **The table is virtualised.** Rendering every row put 1,065 tracks into the DOM as
-  ~32,000 elements and 3,195 button components, costing ~350ms to repaint on any filter
-  change. Only the visible window renders now — ~13 rows, ~370 elements, ~33ms.
-- **The BPM slider commits on release.** It drives a local draft while dragging so the
-  thumbs track the pointer, and filters once the gesture ends rather than on every
-  pointer move.
+- **The list is virtualised against the window.** Only visible rows render, and the page
+  has a single scroll context (no table-in-a-box), which matters on touch screens.
+- **Filtering is live.** The BPM slider updates results once per animation frame while
+  dragging; filtering is a single pass, so this stays smooth on large libraries.
 - **Analysis results are merged through an index and flushed in batches.** Per-track
   `findIndex` made the merge O(n^2) (~850ms of pure lookup on a 20k import), and assigning
   into the array per track repainted the table hundreds of times per import.
@@ -118,51 +136,103 @@ survive re-imports and analyser upgrades.
   local files, region-unavailable items — are reported rather than silently dropped, and a
   failed page keeps everything fetched so far instead of discarding the import.
 
+## Waveforms
+
+Every analysed or played track gets a Serato-style overview waveform: height is loudness,
+colour is the mix of **bass (red), mids (green) and treble (blue)**, so kicks, vocals,
+breakdowns and drops are visible at a glance.
+
+- Linkwitz-Riley 4th-order crossovers at 250 Hz and 4 kHz; RMS per band at 150 slices/s.
+- Each band is normalised on its own, otherwise treble's small amplitude makes every
+  waveform red.
+- Computed in the analysis worker from PCM it already has (~50 ms per preview), or by a
+  lightweight worker the first time an unanalysed track is played. Stored as ~18 KB of
+  binary per track in IndexedDB, versioned separately from key analysis.
+- The player downloads each preview once and uses the bytes twice: a Blob for playback
+  (a signed URL can't expire mid-listen) and the waveform.
+- Tap or drag the waveform to seek; it is a keyboard slider too.
+
+## Design and usability
+
+The interface was rebuilt on Reka UI (headless, accessible primitives) and Tailwind, with
+choices drawn from NN/g research on filtering, tables and touch:
+
+- **Filters beside results on desktop; a bottom-sheet tray on phones** with a live
+  "Show N tracks" button, so you know what you'll get before closing it.
+- **Applied filters as removable chips** with *Clear all*; the result count is always on
+  screen.
+- **The key filter is a Camelot wheel**: compatible keys are a contiguous arc, each key
+  shows how many tracks it holds, and it's fully keyboard-operable.
+- **Sliders are paired with number fields**, because sliders are imprecise.
+- **One list that adapts**: a sortable table on wide screens, a two-line list on phones.
+- **Nothing important hides in a tooltip.** Badge meanings are in a legend and in
+  screen-reader text; disabled states say why.
+- **44 px touch targets** on touch devices, safe-area aware, visible focus, skip link,
+  reduced-motion support.
+- **Dark first**, with light and system themes.
+
 ## Features
 
 | | |
 |---|---|
-| Filter by key (Camelot), BPM range, genre, free text | Search is debounced |
-| Keys shown in Camelot throughout | One column, one chip per wheel position; note name on hover |
+| Filter by key (Camelot wheel), BPM range (± half/double time), genre, free text | Live, with applied-filter chips |
 | **Mix** | Harmonically compatible next tracks, adjustable BPM tolerance |
-| **Build a set** | A chained path where every step mixes into the next; ramp up, hold or wind down |
+| **Build a set** | A chained path where every step mixes into the next; build up, hold or wind down |
 | Half/double-time marking | `½×` / `2×` so a 64 BPM match against 128 reads as intended |
-| 30s preview playback | Via Deezer — Spotify removed previews, Deezer did not |
-| Manual key/BPM correction | Authoritative and permanent |
-| Artwork, genre, duration columns | Shown only when the loaded source has the data |
+| Preview playback with waveform | Via Deezer (or Spotify's own preview for embed imports); Media Session controls |
+| Manual key/BPM correction | On the wheel, with ½×/2× shortcuts; authoritative and permanent |
+| Import from links, Spotify, DJ software, audio files | See *Where your library can come from* |
 | Export | CSV (opens in Excel and Sheets) or straight to a new Spotify playlist |
+| Installable, offline-capable | PWA; prompts before updating |
+
+## Deploying
+
+The service worker needs a fixed base path. The app builds for `/` by default; for a
+subpath (e.g. GitHub Pages) build with `BASE_PATH=/spotify-sort/ npm run build`. Serve
+`index.html` for unknown routes (SPA fallback). For Spotify links you don't own in
+production, deploy `proxy/` and set `VITE_EMBED_PROXY_URL`.
+
+On iPhone and iPad, an installed web app can lose a Spotify sign-in mid-redirect. The PKCE
+verifier is keyed by `state` in localStorage to survive that; if it still fails, sign in
+once in Safari, then reopen the app.
 
 ## Architecture
 
 ```
 src/
-├── router.js                  /  and  /callback
+├── router.js                  /, /callback, /import (share target)
 ├── lib/          pure, testable, no I/O
 │   ├── musicalKey.js          pitch-class normalisation
-│   ├── tracks.js              filtering predicate
+│   ├── tracks.js              filtering, search, sorting
 │   ├── camelot.js             compatibility, set building, tempo relations
 │   ├── analyzeAudio.js        Essentia wrapper, confidence, ANALYZER_VERSION
+│   ├── waveform.js            3-band crossover waveform, colour mapping
+│   ├── sourceLinks.js         Spotify/Deezer link parsing
+│   ├── spotifyEmbed.js        embed-page track extraction (shared with proxy/)
+│   ├── audioFiles.js          local file naming and limits
 │   ├── djLibrary.js           Rekordbox / Traktor / CSV parsers
-│   └── exportFormats.js       CSV
-├── stores/       Pinia
-│   ├── library.js             tracks, imports, enrichment, exports
-│   ├── filters.js             filter state, mix seed, derived rows
-│   ├── overrides.js           manual corrections
-│   └── player.js              preview playback
+│   ├── keyColors.js, trackInfo.js, exportFormats.js
+├── stores/       Pinia: library, filters, overrides, player, auth, toasts
 ├── services/     I/O
 │   ├── spotifyAuth.js         PKCE, token lifecycle
-│   ├── spotifyApi.js          pagination, genres, playlist export
-│   ├── deezer.js              JSONP transport
-│   ├── enrich.js              orchestration
+│   ├── spotifyApi.js          pagination, playlists/albums/tracks, embed proxy, export
+│   ├── deezer.js              JSONP transport, matching, collections
+│   ├── enrich.js              decode + analysis orchestration
+│   ├── analysisQueue.js       resumable per-track queue
 │   ├── workerPool.js          sized to hardwareConcurrency
-│   ├── analysis.worker.js     Essentia off-thread
-│   └── cache.js               IndexedDB: enrichment + overrides
-├── views/                     LibraryView, CallbackView
-└── components/                LibraryImport, TrackFilters, MixPanel,
-                               TrackTable, KeyOverrideDialog
+│   ├── analysis.worker.js     Essentia + waveform off-thread
+│   ├── waveform.worker.js     waveform only, for playback backfill
+│   ├── db.js                  IndexedDB: tracks, enrichment, overrides, waveforms
+│   └── storage.js, localFiles.js
+├── components/
+│   ├── ui/                    Button, Sheet, Field, TextInput, Switch, RangeSlider, …
+│   └── CamelotWheel, FilterPanel, TrackList, SeedCard, LibrarySheet,
+│       NowPlayingBar, WaveformCanvas, EditTrackSheet, …
+└── views/                     LibraryView, CallbackView
+proxy/                         Cloudflare Worker for Spotify embed pages
 ```
 
-`lib/` is pure functions over plain data, which is why 42 tests run with no component
+`lib/` is pure functions over plain data, which is why the tests run with no component
 framework and no DOM.
 
 ### Musical key representation
@@ -191,14 +261,14 @@ name-based lookup.
 | Implicit Grant removed 27 Nov 2025 | Authorization Code + PKCE only |
 | `localhost` redirect URIs rejected | Use `http://127.0.0.1:PORT` |
 | Refresh tokens expire after 6 months | `400 invalid_grant` prompts re-auth |
-| Playlist `items` only for playlists you own | Pasting someone else's link returns no tracks |
+| Playlist `items` only for playlists you own | Other playlists go through the embed proxy (unofficial) |
 | `popularity` removed from dev-mode track objects | Column omitted |
 
 This is why DJ-software import matters: it has none of these limits.
 
 ## Roadmap
 
-- [x] Vue 3 + Vuetify 4 + Vite; Pinia + Router
+- [x] Vue 3 + Vite; Pinia + Router; UI rebuilt on Reka UI + Tailwind (dark first)
 - [x] Spotify login (PKCE), library and playlist import
 - [x] Tempo and key enrichment via Deezer + local analysis
 - [x] Camelot mix suggestions and set building
@@ -206,5 +276,11 @@ This is why DJ-software import matters: it has none of these limits.
 - [x] Rekordbox / Traktor / CSV import
 - [x] Preview playback, artwork, genre, duration
 - [x] CSV and Spotify playlist export
+- [x] Import any Spotify or Deezer link; share target; paste-anywhere
+- [x] Installable PWA with offline library
+- [x] Serato-style 3-band waveforms
+- [x] Full-length analysis of local audio files
 - [ ] Match imported DJ libraries back to Spotify IDs so both sources merge
 - [ ] Persist named sets between sessions
+- [ ] Mini waveforms in list rows; zoomed, scrolling waveform for full-length files
+- [ ] Read ID3/MP4 tags for local files instead of relying on filenames
