@@ -241,8 +241,8 @@ const columns = computed(() =>
 
 const gridClass = computed(() =>
   props.ordered
-    ? 'grid-cols-[2rem_minmax(0,1fr)_auto_3.25rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_5rem_4rem_4rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,11rem)_6.5rem_5rem_4rem_4rem]'
-    : 'grid-cols-[minmax(0,1fr)_auto_3.25rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[minmax(0,1fr)_6.5rem_5rem_4rem_7.5rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_6.5rem_5rem_4rem_7.5rem]'
+    ? 'grid-cols-[2rem_minmax(0,1fr)_auto_4.25rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[2.5rem_minmax(0,1fr)_6.5rem_5.5rem_4rem_4rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,11rem)_6.5rem_5.5rem_4rem_4rem]'
+    : 'grid-cols-[minmax(0,1fr)_auto_4.25rem_2.75rem] gap-x-2 px-2 @2xl:grid-cols-[minmax(0,1fr)_6.5rem_5.5rem_4rem_7.5rem] @2xl:gap-x-3 @2xl:px-3 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_6.5rem_5.5rem_4rem_7.5rem]'
 );
 
 function ariaSort(col) {

@@ -54,7 +54,13 @@
         class="mt-0.5 size-4 shrink-0 text-warn"
         aria-hidden="true"
       />
-      <span>This key was estimated from a 30-second preview, so suggestions may be off. If you know the real key, correct it from the track's menu.</span>
+      <span>
+        <template v-if="seedConfidence?.percent != null">
+          This key is an estimate, about {{ seedConfidence.percent }}% likely to be exactly right{{ seedConfidence.percent < 50 ? ', but often a neighbouring key on the wheel' : '' }}.
+        </template>
+        <template v-else>This key was estimated from audio, so it may be off.</template>
+        Suggestions are our best guess: tracks with confident keys are listed first. If you know the real key, correct it from the track's menu.
+      </span>
     </p>
 
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -153,10 +159,11 @@ import Segmented from './ui/Segmented.vue';
 import RangeSlider from './ui/RangeSlider.vue';
 import KeyBadge from './KeyBadge.vue';
 import { useFiltersStore } from '@/stores/filters.js';
-import { formatTempo } from '@/lib/trackInfo.js';
+import { formatTempo, keyConfidence } from '@/lib/trackInfo.js';
 
 const filters = useFiltersStore();
 const seed = computed(() => filters.seedTrack);
+const seedConfidence = computed(() => keyConfidence(filters.seedTrack));
 // Reka toggle values are strings; the store keeps a boolean.
 const mode = computed({
   get: () => (filters.setMode ? 'set' : 'next'),

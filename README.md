@@ -93,8 +93,11 @@ What rescues key is that Essentia's `strength` predicts correctness:
 | 0.80–0.90 | 64 | 34% | 61% |
 | **≥ 0.90** | **25** | **64%** | **88%** |
 
-Keys at or above `0.90` show `~` and can seed a mix. Below it they show `?`, render dimmed,
-and **cannot** seed a mix. `KEY_CONFIDENCE_THRESHOLD` lives in `src/lib/analyzeAudio.js`.
+Keys at or above `0.90` show `~`. Below it they render dimmed with their calibrated chance of
+being exactly right (`12B 34%`). Every track with a tempo and a key can start a mix; uncertain
+keys are still suggested, but ranked behind confident ones (a key-risk penalty added to the
+tempo distance, `keyRisk` in `src/lib/trackInfo.js`), and the mix card says how sure the
+starting key is. `KEY_CONFIDENCE_THRESHOLD` lives in `src/lib/analyzeAudio.js`.
 
 **And you can always overrule it.** “Correct tempo or key” in any row's menu sets them by hand.
 Manual corrections outrank Spotify, Deezer and the analyser, persist in IndexedDB, and

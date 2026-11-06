@@ -118,7 +118,7 @@ function run(storeName, mode, body) {
 /** Fields an import must never clobber — they are earned, not fetched. */
 const ANALYSIS_FIELDS = [
   'tempo', 'key', 'mode', 'pitchClass', 'tempoSource', 'keySource',
-  'keyConfident', 'deezerId', 'analysisState', 'attempts', 'lastError',
+  'keyConfident', 'keyStrength', 'deezerId', 'analysisState', 'attempts', 'lastError',
 ];
 
 /**

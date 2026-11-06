@@ -39,11 +39,11 @@
             </dd>
           </div>
           <div class="flex gap-3">
-            <dt class="w-14 shrink-0">
-              <span class="inline-flex h-6 items-center rounded-md border border-dashed border-border-strong px-1.5 font-mono text-[13px] font-semibold text-muted">8A ?</span>
+            <dt class="w-20 shrink-0">
+              <span class="inline-flex h-6 items-center gap-1 rounded-md border border-dashed border-border-strong px-1.5 font-mono text-[13px] font-semibold text-muted">8A <span class="font-sans text-[11px] font-medium">34%</span></span>
             </dt>
             <dd class="text-muted">
-              Low-confidence estimate. Can't start a mix until you correct it.
+              Low-confidence estimate, with how likely it is to be exactly right (it's often a neighbouring key). You can still mix from it; uncertain keys are suggested after confident ones.
             </dd>
           </div>
           <div class="flex gap-3">

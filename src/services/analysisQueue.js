@@ -120,6 +120,7 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
             tempoSource: merged.tempoSource ?? null,
             keySource: merged.keySource ?? null,
             keyConfident: merged.keyConfident ?? null,
+            keyStrength: merged.keyStrength ?? null,
             deezerId: entry?.deezerId ?? null,
             analysisState: state,
             attempts,

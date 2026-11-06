@@ -15,7 +15,7 @@ import {
   fromCamelotCode,
 } from '../lib/camelot.js';
 import { displayName } from '../lib/musicalKey.js';
-import { camelotRank, codeFor } from '../lib/trackInfo.js';
+import { camelotRank, codeFor, keyRisk } from '../lib/trackInfo.js';
 import { useLibraryStore } from './library.js';
 
 export const SORT_FIELDS = [
@@ -97,12 +97,14 @@ export const useFiltersStore = defineStore('filters', {
         .map(([value, count]) => ({ value, count }));
     },
 
-    /** Low-confidence analysed keys are excluded from any mixing decision. */
-    trustworthy() {
+    /**
+     * Every track can take part in mixing, including ones whose key is only a
+     * low-confidence estimate. Rather than hiding them, suggestions are ranked
+     * with a penalty for key risk (see keyRisk), so confident matches come first.
+     */
+    mixPool() {
       const library = useLibraryStore();
-      return library.tracks.filter(
-        (t) => !(t.keySource === 'analysis' && t.keyConfident === false)
-      );
+      return library.tracks;
     },
 
     /** Genre narrows every mode, including set building. */
@@ -115,10 +117,11 @@ export const useFiltersStore = defineStore('filters', {
 
     setPath() {
       if (!this.seedTrack || !this.setMode) return [];
-      return buildSet(this.genrePool(this.trustworthy), this.seedTrack, {
+      return buildSet(this.genrePool(this.mixPool), this.seedTrack, {
         length: this.setLength,
         bpmTolerance: this.bpmTolerance,
         direction: this.setDirection,
+        penalty: keyRisk,
       });
     },
 
@@ -145,16 +148,23 @@ export const useFiltersStore = defineStore('filters', {
         // user picks another sort.
         const term = normaliseQuery(this.query);
         const matches = this.genrePool(
-          compatibleTracks(this.trustworthy, this.seedTrack, { bpmTolerance: this.bpmTolerance })
+          compatibleTracks(this.mixPool, this.seedTrack, { bpmTolerance: this.bpmTolerance })
         )
           .filter((t) => matchesQuery(t, term))
           .map((track) => ({
             ...track,
             relation: tempoRelation(this.seedTrack.tempo, track.tempo, this.bpmTolerance),
           }));
-        return this.sort.key === 'match'
-          ? matches
-          : sortTracks(matches, { ...this.sort, rank: RANKS[this.sort.key] });
+        if (this.sort.key !== 'match') {
+          return sortTracks(matches, { ...this.sort, rank: RANKS[this.sort.key] });
+        }
+        // Best match: closest tempo, with uncertain keys pushed down the list.
+        const seedTempo = this.seedTrack.tempo;
+        const score = (t) => Math.abs(t.tempo - seedTempo) + keyRisk(t);
+        return matches
+          .map((t) => ({ t, s: score(t) }))
+          .sort((a, b) => a.s - b.s)
+          .map(({ t }) => t);
       }
 
       const filtered = filterTracks(this.genrePool(library.tracks), {

@@ -14,7 +14,8 @@
     <span
       v-else-if="uncertain"
       aria-hidden="true"
-    >?</span>
+      class="font-sans text-[11px] font-medium"
+    >{{ confidence?.percent != null ? `${confidence.percent}%` : '?' }}</span>
     <span
       v-else-if="estimated"
       aria-hidden="true"
@@ -32,7 +33,7 @@
 import { computed } from 'vue';
 import { PenLine } from '@lucide/vue';
 import { keyColor } from '@/lib/keyColors.js';
-import { codeFor, isUncertain, isEstimated, keyName } from '@/lib/trackInfo.js';
+import { codeFor, isUncertain, isEstimated, keyName, keyConfidence } from '@/lib/trackInfo.js';
 
 /**
  * Key as a coloured Camelot code. Provenance is encoded with a visible mark
@@ -43,12 +44,19 @@ const props = defineProps({ track: { type: Object, required: true } });
 const code = computed(() => codeFor(props.track));
 const uncertain = computed(() => isUncertain(props.track));
 const estimated = computed(() => isEstimated(props.track));
+const confidence = computed(() => keyConfidence(props.track));
 const srText = computed(() => {
   const name = keyName(props.track);
   if (props.track.keySource === 'manual') return `, ${name}, your correction`;
-  if (uncertain.value) return `, ${name}, low-confidence estimate`;
-  if (estimated.value) return `, ${name}, estimated from audio`;
+  const pct = confidence.value?.percent;
+  if (uncertain.value) {
+    return `, ${name}, low-confidence estimate${pct != null ? `, about ${pct}% likely to be exactly right` : ''}`;
+  }
+  if (estimated.value) return `, ${name}, estimated from audio${pct != null ? `, about ${pct}% likely exact` : ''}`;
   return `, ${name}`;
 });
-const title = computed(() => keyName(props.track));
+const title = computed(() => {
+  const pct = confidence.value?.percent;
+  return keyName(props.track) + (pct != null ? ` · estimate, ~${pct}% likely exact` : '');
+});
 </script>

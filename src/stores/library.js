@@ -21,6 +21,8 @@ import {
   putTracks,
   getAllTracks,
   patchTrack,
+  patchTracks,
+  getMany,
   countStates,
   clearTracks,
   setMeta,
@@ -140,6 +142,7 @@ export const useLibraryStore = defineStore('library', {
           this.origin = meta?.origin ?? 'spotify';
           this.originDetail = meta?.detail ?? null;
           await this.refreshCounts();
+          this.backfillKeyStrength();
           const { pending, failed, unavailable } = this.counts;
           const outstanding = pending + failed;
           this.summary =
@@ -156,6 +159,26 @@ export const useLibraryStore = defineStore('library', {
           `Could not read local storage (${error?.message || error}). ` +
           'The app will work, but nothing will persist between reloads.';
       }
+    },
+
+    /**
+     * Key strength (the analyser's confidence) used to live only in the analysis
+     * cache. Copy it onto tracks analysed before it was stored, so the UI can
+     * show how sure each estimate is.
+     */
+    async backfillKeyStrength() {
+      const missing = this.raw.filter((t) => t.keySource === 'analysis' && t.keyStrength == null);
+      if (!missing.length) return;
+      const cached = await getMany(missing.map((t) => t.id)).catch(() => new Map());
+      const patches = [];
+      for (const track of missing) {
+        const strength = cached.get(track.id)?.keyStrength;
+        if (strength != null) patches.push({ id: track.id, patch: { keyStrength: strength } });
+      }
+      if (!patches.length) return;
+      await patchTracks(patches).catch(() => {});
+      const byId = new Map(patches.map((p) => [p.id, p.patch.keyStrength]));
+      this.raw = this.raw.map((t) => (byId.has(t.id) ? { ...t, keyStrength: byId.get(t.id) } : t));
     },
 
     async refreshCounts() {
@@ -668,6 +691,7 @@ export const useLibraryStore = defineStore('library', {
               tempoSource: 'analysis',
               keySource: 'analysis',
               keyConfident: Boolean(analysis.keyConfident),
+              keyStrength: analysis.keyStrength ?? null,
               source: 'file',
               analysisState: 'done',
             });

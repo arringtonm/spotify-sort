@@ -29,7 +29,7 @@
           v-if="!canSeed(track)"
           class="px-2.5 pb-1.5 pl-9 text-xs text-muted"
         >
-          Needs a reliable tempo and key first — correct it below.
+          Needs a tempo and key first — add them below.
         </p>
         <MenuItem @select="$emit('edit')">
           <PenLine /> Correct tempo or key
