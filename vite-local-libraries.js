@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync, realpathSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, extname, basename } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -56,6 +56,17 @@ const MUSIC_XML = [
   'Music/Library.xml',
 ].map((p) => join(homedir(), p));
 
+const BACKUPS = join(homedir(), 'Documents', 'Spotify Sort Backups');
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const parts = [];
+    req.on('data', (c) => parts.push(c));
+    req.on('end', () => resolve(Buffer.concat(parts).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
 export default function localLibraries() {
   return {
     name: 'local-libraries',
@@ -96,6 +107,29 @@ export default function localLibraries() {
             const file = MUSIC_XML.find((p) => existsSync(p));
             if (!file) return send(404, 'No Music/iTunes Library.xml found. In Music: File → Library → Export Library…');
             return send(200, readFileSync(file, 'utf8'), 'application/xml');
+          }
+          // Backups: same folder as the desktop app's (~/Documents/Spotify Sort Backups).
+          if (url.pathname === '/backup' && req.method === 'POST') {
+            const name = url.searchParams.get('name') || '';
+            if (name.includes('/') || !name.endsWith('.json')) return send(400, 'Bad backup name.');
+            mkdirSync(BACKUPS, { recursive: true });
+            const path = join(BACKUPS, name);
+            return readBody(req).then((body) => {
+              writeFileSync(path, body);
+              send(200, JSON.stringify({ path }), 'application/json');
+            });
+          }
+          if (url.pathname === '/backup/latest') {
+            const files = existsSync(BACKUPS) ? readdirSync(BACKUPS).filter((f) => f.endsWith('.json')) : [];
+            const latest = files
+              .map((name) => ({ name, path: join(BACKUPS, name), modifiedMs: statSync(join(BACKUPS, name)).mtimeMs, bytes: statSync(join(BACKUPS, name)).size }))
+              .sort((a, b) => b.modifiedMs - a.modifiedMs)[0];
+            return send(200, JSON.stringify(latest ?? null), 'application/json');
+          }
+          if (url.pathname === '/backup') {
+            const name = url.searchParams.get('name') || '';
+            if (name.includes('/')) return send(400, 'Bad backup name.');
+            return send(200, readFileSync(join(BACKUPS, name), 'utf8'), 'application/json');
           }
           return send(404, 'Unknown');
         } catch (error) {

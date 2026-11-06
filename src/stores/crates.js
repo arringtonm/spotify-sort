@@ -363,6 +363,24 @@ export const useCratesStore = defineStore('crates', {
       return changed;
     },
 
+    /** Bring in crates from a backup: new ones are added, newer copies win. */
+    mergeFrom(list) {
+      const incoming = sanitiseCrates({ crates: list });
+      const byId = new Map(this.crates.map((c) => [c.id, c]));
+      let added = 0;
+      for (const c of incoming) {
+        const mine = byId.get(c.id);
+        if (!mine) {
+          this.crates.push(c);
+          added++;
+        } else if (c.updatedAt > mine.updatedAt) {
+          Object.assign(mine, c);
+        }
+      }
+      this.persist();
+      return added;
+    },
+
     /** Another tab changed crates: take its version. */
     reload() {
       this.crates = load();

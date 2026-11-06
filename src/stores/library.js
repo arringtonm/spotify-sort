@@ -124,6 +124,7 @@ export const useLibraryStore = defineStore('library', {
         link: 'Imported link',
         files: 'Audio files',
         serato: 'Serato',
+        backup: 'Backup',
       })[state.origin] ?? state.origin,
     total: (state) => state.raw.length,
     /** Work still outstanding — drives the Resume affordance. */
@@ -782,6 +783,31 @@ export const useLibraryStore = defineStore('library', {
       });
       const folder = useCratesStore().importMixtapes(folderName, withIds);
       return { folder, found, total };
+    },
+
+    /** Save everything to a backup file; returns where it was written. */
+    async exportBackup() {
+      const { buildBackup, saveBackup } = await import('../services/backup.js');
+      return saveBackup(await buildBackup(useCratesStore().crates));
+    },
+
+    /** Merge a backup (tracks with analysis, crates, corrections) into this library. */
+    async restoreBackup(data) {
+      const { restoreTracks } = await import('../services/backup.js');
+      return this.withBusy(async () => {
+        if (this.isDemo) await clearTracks();
+        const merge = await restoreTracks(data);
+        const crates = useCratesStore().mergeFrom(data.crates ?? []);
+        const overrides = useOverridesStore();
+        overrides.loaded = false;
+        await overrides.load();
+        await setMeta('library', { origin: data.meta?.origin ?? 'backup', at: Date.now() });
+        this.raw = await getAllTracks();
+        this.origin = data.meta?.origin && data.meta.origin !== 'demo' ? data.meta.origin : 'backup';
+        await this.refreshCounts();
+        this.summary = `Restored ${merge.added.toLocaleString()} tracks (${merge.kept.toLocaleString()} were already here), ${crates} crates and ${merge.corrections} corrections.`;
+        return { ...merge, crates };
+      });
     },
 
     /** Keep tracks found by Discover: they arrive already measured. */

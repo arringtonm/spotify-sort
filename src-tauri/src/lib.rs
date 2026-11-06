@@ -223,6 +223,62 @@ fn files_exist(paths: Vec<String>) -> Vec<bool> {
     paths.iter().map(|p| Path::new(p).is_file()).collect()
 }
 
+// ------------------------------------------------------------------ backups
+
+/// Library backups live in ~/Documents/Spotify Sort Backups, so moving between
+/// the browser and the desktop app (or to a new Mac) is a file you can see.
+fn backup_dir() -> Result<PathBuf, String> {
+    home()
+        .map(|h| h.join("Documents").join("Spotify Sort Backups"))
+        .ok_or_else(|| "No home folder.".to_string())
+}
+
+#[tauri::command]
+fn write_backup(name: String, contents: String) -> Result<String, String> {
+    if name.contains('/') || !name.ends_with(".json") {
+        return Err("Bad backup name.".into());
+    }
+    let dir = backup_dir()?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(name);
+    fs::write(&path, contents).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupFile {
+    name: String,
+    path: String,
+    modified_ms: u64,
+    bytes: u64,
+}
+
+#[tauri::command]
+fn latest_backup() -> Option<BackupFile> {
+    let dir = backup_dir().ok()?;
+    fs::read_dir(&dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .max_by_key(|p| modified_ms(p))
+        .map(|p| BackupFile {
+            name: p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            modified_ms: modified_ms(&p),
+            bytes: fs::metadata(&p).map(|m| m.len()).unwrap_or(0),
+            path: p.to_string_lossy().into_owned(),
+        })
+}
+
+#[tauri::command]
+fn read_backup(name: String) -> Result<String, String> {
+    if name.contains('/') {
+        return Err("Bad backup name.".into());
+    }
+    fs::read_to_string(backup_dir()?.join(name)).map_err(|e| e.to_string())
+}
+
 // ------------------------------------------------------------------ Spotify sign-in
 
 /// Open Spotify's consent page in its own window and catch the redirect.
@@ -370,6 +426,9 @@ pub fn run() {
             read_music_library,
             read_audio_file,
             files_exist,
+            write_backup,
+            latest_backup,
+            read_backup,
             spotify_sign_in,
         ])
         .run(tauri::generate_context!())

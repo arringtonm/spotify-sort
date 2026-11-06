@@ -423,6 +423,66 @@
         <AnalysisStatus />
       </section>
 
+      <!-- Backup: how a library moves between the browser, the desktop app and Macs. -->
+      <section aria-labelledby="lib-backup">
+        <SectionTitle
+          id="lib-backup"
+          :icon="ArchiveRestore"
+        >
+          Backup
+        </SectionTitle>
+        <div
+          v-if="offerRestore"
+          class="mb-3 rounded-xl border border-accent/40 bg-accent-soft/50 p-3 text-sm"
+        >
+          <p class="font-medium">
+            Restore your library?
+          </p>
+          <p class="mt-0.5 text-muted">
+            A backup from {{ new Date(latestBackup.modifiedMs).toLocaleString() }} is in Documents › Spotify Sort Backups.
+          </p>
+          <Button
+            variant="primary"
+            size="sm"
+            class="mt-2"
+            :disabled="library.busy"
+            @click="restoreLatest"
+          >
+            <ArchiveRestore /> Restore it
+          </Button>
+        </div>
+        <p class="mb-3 text-sm text-muted">
+          Tracks with their analysis, crates, past mixtapes and your corrections, in one file. Use it to move your library into the desktop app or to another Mac.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            :disabled="library.busy || library.isDemo"
+            :loading="backingUp"
+            @click="backup"
+          >
+            <Save /> Back up now
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="library.busy"
+            @click="backupInput?.click()"
+          >
+            <ArchiveRestore /> Restore from file…
+          </Button>
+          <input
+            ref="backupInput"
+            type="file"
+            accept=".json,application/json"
+            class="sr-only"
+            tabindex="-1"
+            @change="restoreFile"
+          >
+        </div>
+      </section>
+
       <!-- 5. Danger zone, last and visually distinct. -->
       <section
         v-if="!library.isDemo"
@@ -514,6 +574,8 @@ import {
   AudioWaveform,
   Disc3,
   History,
+  ArchiveRestore,
+  Save,
 } from '@lucide/vue';
 import { AUDIO_ACCEPT, isAudioFile } from '@/lib/audioFiles.js';
 import { useOnline } from '@vueuse/core';
@@ -532,6 +594,7 @@ import { EMBED_PROXY } from '@/services/spotifyApi.js';
 import { parseSourceLink } from '@/lib/sourceLinks.js';
 import { useUi } from '@/composables/useUi.js';
 import { canReadLocalLibraries, findSeratoLibraries } from '@/services/localLibraries.js';
+import { findLatestBackup, readBackupFile } from '@/services/backup.js';
 
 const props = defineProps({ open: Boolean });
 const emit = defineEmits(['update:open']);
@@ -556,6 +619,59 @@ const busyWith = ref(null);
 function openMixtapes() {
   emit('update:open', false);
   setTimeout(() => (ui.mixtapeImportOpen.value = true), 150);
+}
+
+// ---- Backup ----------------------------------------------------------------
+const backupInput = ref(null);
+const backingUp = ref(false);
+const latestBackup = ref(null);
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (isOpen) latestBackup.value = await findLatestBackup().catch(() => null);
+  },
+  { immediate: true }
+);
+// A fresh install (sample library) with a backup on disk: offer it first.
+const offerRestore = computed(() => Boolean(latestBackup.value && library.isDemo));
+
+async function backup() {
+  backingUp.value = true;
+  try {
+    const where = await library.exportBackup();
+    toasts.push({ title: 'Library backed up', description: where, tone: 'success' });
+    latestBackup.value = await findLatestBackup().catch(() => null);
+  } catch (error) {
+    toasts.push({ title: 'Backup failed', description: error.message, tone: 'error' });
+  } finally {
+    backingUp.value = false;
+  }
+}
+
+async function restore(data) {
+  try {
+    const result = await library.restoreBackup(data);
+    toasts.push({ title: 'Library restored', description: library.summary, tone: 'success' });
+    filters.resetAll();
+    return result;
+  } catch (error) {
+    toasts.push({ title: 'Couldn’t restore', description: error.message, tone: 'error' });
+  }
+}
+
+async function restoreLatest() {
+  await restore(await readBackupFile(latestBackup.value.name));
+}
+
+async function restoreFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    await restore(JSON.parse(await file.text()));
+  } catch {
+    toasts.push({ title: 'Couldn’t read that file', description: 'Choose a backup saved by Spotify Sort.', tone: 'error' });
+  }
 }
 
 // ---- Serato ----------------------------------------------------------------
