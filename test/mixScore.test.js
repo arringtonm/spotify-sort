@@ -36,3 +36,13 @@ test('uncertain keys rank after confident ones', () => {
   const unsure = mixScore(seed, { tempo: 120, pitchClass: 9, mode: 'min', keySource: 'analysis', keyConfident: false, keyStrength: 0.75 });
   assert.ok(sure.score < unsure.score);
 });
+
+test('transition flags clashes and rough steps', async () => {
+  const { transition } = await import('../src/lib/mixScore.js');
+  const a = t({ tempo: 124, pitchClass: 9, mode: 'min' }); // 8A
+  assert.equal(transition(a, t({ tempo: 125, pitchClass: 4, mode: 'min' })).level, 'smooth'); // 9A
+  assert.equal(transition(a, t({ tempo: 124, pitchClass: 1, mode: 'min' })).level, 'clash'); // 12A
+  assert.match(transition(a, t({ tempo: 129, pitchClass: 9, mode: 'min' })).text, /tempo 5 BPM apart/);
+  assert.equal(transition(a, t({ tempo: 140, pitchClass: 9, mode: 'min' })).level, 'clash');
+  assert.equal(transition(a, t({ tempo: 62, pitchClass: 9, mode: 'min' })).level, 'smooth', 'half time is fine');
+});

@@ -160,6 +160,7 @@ import { computed } from 'vue';
 import { FolderOpen, X, PenLine, Trash2, Sparkles } from '@lucide/vue';
 import { useUi } from '@/composables/useUi.js';
 import { canSeed } from '@/lib/trackInfo.js';
+import { transition } from '@/lib/mixScore.js';
 import Button from './ui/Button.vue';
 import ExportMenu from './ExportMenu.vue';
 import { useCratesStore } from '@/stores/crates.js';
@@ -203,6 +204,12 @@ const summary = computed(() => {
   const parts = [`${n} ${n === 1 ? 'track' : 'tracks'}`];
   if (n) parts.push(formatTotalDuration(rows.value));
   if (crates.activeView.missing) parts.push(`${crates.activeView.missing} not in your library`);
+  if (!crates.activeView.isFolder && n > 1) {
+    const r = rows.value;
+    let clashes = 0;
+    for (let i = 1; i < r.length; i++) if (transition(r[i - 1], r[i])?.level === 'clash') clashes++;
+    parts.push(clashes ? `${clashes} clashing ${clashes === 1 ? 'step' : 'steps'}` : 'every step mixes');
+  }
   return parts.join(' · ');
 });
 </script>

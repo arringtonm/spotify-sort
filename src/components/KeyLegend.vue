@@ -79,6 +79,22 @@
               Already used in a past mixtape — the row's ⋯ menu says which.
             </dd>
           </div>
+          <div class="flex gap-3">
+            <dt class="flex w-14 shrink-0 items-center gap-1">
+              <span class="size-1.5 rounded-full bg-ok" /><span class="size-1.5 rounded-full bg-warn" /><span class="size-1.5 rounded-full bg-danger" />
+            </dt>
+            <dd class="text-muted">
+              In sets and crates: how the step from the track above mixes — smooth, rough (tempo or energy jump, unsure key) or clashing.
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-14 shrink-0">
+              <EnergyMeter :track="{ tempo: 124, features: { onsetRate: 3.4, loudnessDb: -10, danceability: 1.7 } }" />
+            </dt>
+            <dd class="text-muted">
+              Energy 1–10, measured from the audio: busyness, loudness, tempo and groove.
+            </dd>
+          </div>
         </dl>
       </PopoverContent>
     </PopoverPortal>
@@ -90,6 +106,7 @@ import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka
 import { CircleHelp, PenLine, History } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import SourceIcons from './SourceIcons.vue';
+import EnergyMeter from './EnergyMeter.vue';
 import { floatingPanel } from './ui/menu.js';
 import { keyColor } from '@/lib/keyColors.js';
 </script>

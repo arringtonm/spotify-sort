@@ -81,9 +81,24 @@
           <div
             v-if="ordered"
             role="cell"
-            class="text-center font-mono text-sm text-muted tabular"
+            class="flex items-center justify-center gap-1 font-mono text-sm text-muted tabular"
           >
+            <!-- How the step *into* this track mixes: green smooth, amber rough, red clash. -->
+            <span
+              v-if="transitions[item.index]"
+              class="size-1.5 shrink-0 rounded-full"
+              :class="{
+                'bg-ok': transitions[item.index].level === 'smooth',
+                'bg-warn': transitions[item.index].level === 'rough',
+                'bg-danger': transitions[item.index].level === 'clash',
+              }"
+              :title="transitions[item.index].text"
+            />
             {{ track.position }}
+            <span
+              v-if="transitions[item.index]"
+              class="sr-only"
+            >{{ transitions[item.index].text }}</span>
           </div>
 
           <!-- Play + identity: one big target. -->
@@ -255,6 +270,7 @@ import { cn } from '@/lib/cn.js';
 import { useTrackDrag, readTrackDrag, isTrackDrag } from '@/composables/useTrackDrag.js';
 import { dropIndex } from '@/lib/crates.js';
 import { useDensity } from '@/composables/useDensity.js';
+import { transition } from '@/lib/mixScore.js';
 
 /**
  * One virtualised list that is a table on wide screens and a two-line list on
@@ -279,6 +295,13 @@ const wide = computed(() => width.value >= 672); // matches @2xl
 const coarse = useMediaQuery('(pointer: coarse)');
 /** Compact: one text line per row, small artwork — about twice as many tracks on screen. */
 const { compact } = useDensity();
+
+/** For ordered lists (sets, crates): how each step from the previous track mixes. */
+const transitions = computed(() =>
+  props.ordered
+    ? props.rows.map((t, i) => (i ? transition(props.rows[i - 1], t, { tolerance: filters.bpmTolerance }) : null))
+    : []
+);
 
 const columns = computed(() =>
   [

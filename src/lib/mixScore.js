@@ -96,3 +96,59 @@ export function mixScore(from, track, { tolerance = 3, priority = 'balanced' } =
 
   return { score: Number(score.toFixed(3)), reasons };
 }
+
+/**
+ * Judge the step from `prev` into `track` in an ordered list (a built set, a
+ * crate): 'smooth', 'rough' or 'clash', with the reason. DJ.Studio-style weak
+ * link spotting, so a crate can be fixed by moving one track.
+ */
+export function transition(prev, track, { tolerance = 3 } = {}) {
+  if (!prev || !track) return null;
+  const notes = [];
+  let level = 'smooth';
+  const worse = (to) => {
+    if (to === 'clash' || (to === 'rough' && level === 'smooth')) level = to;
+  };
+
+  if (prev.tempo && track.tempo) {
+    const d = Math.min(
+      Math.abs(track.tempo - prev.tempo),
+      Math.abs(track.tempo * 2 - prev.tempo),
+      Math.abs(track.tempo / 2 - prev.tempo)
+    );
+    if (d > tolerance * 2) {
+      worse('clash');
+      notes.push(`tempo jumps ${Math.round(d)} BPM`);
+    } else if (d > tolerance) {
+      worse('rough');
+      notes.push(`tempo ${Math.round(d)} BPM apart`);
+    }
+  } else {
+    worse('rough');
+    notes.push('tempo unknown');
+  }
+
+  const move = keyMove(prev, track);
+  if (codeFor(prev) && codeFor(track)) {
+    if (!move) {
+      worse('clash');
+      notes.push(`key clash (${codeFor(prev)} → ${codeFor(track)})`);
+    } else if (keyRisk(track) >= 2 || keyRisk(prev) >= 2) {
+      worse('rough');
+      notes.push('key uncertain');
+    }
+  } else {
+    worse('rough');
+    notes.push('key unknown');
+  }
+
+  const ea = energyLevel(prev);
+  const eb = energyLevel(track);
+  if (ea != null && eb != null && Math.abs(eb - ea) >= 3) {
+    worse('rough');
+    notes.push(`energy ${eb > ea ? '+' : ''}${eb - ea}`);
+  }
+
+  const label = { smooth: 'Smooth transition', rough: 'Rough transition', clash: 'Clashing transition' }[level];
+  return { level, notes, text: notes.length ? `${label}: ${notes.join(', ')}` : `${label}${move ? ` (${KEY_REASON[move].toLowerCase()})` : ''}` };
+}
