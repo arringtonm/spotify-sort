@@ -58,9 +58,14 @@ the user isn't registered, step 3 is missing.
 `npm run desktop:build` produces an ~8 MB `Spotify Sort.app` (copy it to Applications; the
 first launch needs right-click → Open, since it isn't notarised). It's the same app with:
 
-- **A menu bar**: File → Import Serato Library (⇧⌘S), Import… (⌘I), New Crate (⌘N), Import
-  Past Mixtapes; Edit → Find (⌘F); View → All Tracks (⌘0), Comfortable/Compact rows (⌘1/⌘2),
-  source filters, Reset Filters (⇧⌘R); Mix → Next Track / Build a Set / Stop Mixing (⌘.).
+- **A menu bar**: File → Sync Serato Library (⇧⌘I), Import… (⌘I), New Crate (⌘N), Import
+  Past Mixtapes, Import Music Library; Edit → Find (⌘F); View → All Tracks (⌘0), Browse Crates
+  (⌘K), Comfortable/Compact rows (⌘1/⌘2), Source, Hide Used (⇧⌘H), Reset Filters (⇧⌘R);
+  Mix → Mix From Playing Track (⌘E), Back (⌘[), Find New Tracks (⇧⌘F), Next Track / Build a
+  Set, Stop Mixing (⌘.).
+- **Keyboard in the list** (also in a browser): ↑/↓ Home/End move, Space plays, Enter or M
+  mixes from the row, F finds new tracks like it; in your own crates ⌫ removes and ⌥↑/↓ moves.
+  Shift-click a key on the wheel to select it and its mixable neighbours.
 - **Direct, read-only access to your libraries**: `~/Music/_Serato_` and every drive's
   `_Serato_`, the Music/iTunes `Library.xml`, and the audio files they point at.
 - **No browser limits**: Spotify playlist pages are read without the proxy.
@@ -75,7 +80,7 @@ endpoint (`vite-local-libraries.js`), so everything also works in a browser on t
 
 ## Where your library can come from
 
-**0. Your Serato library — one click.** *Library → Serato library* (or ⇧⌘S) reads every
+**0. Your Serato library — one click.** *Library → Serato library* (or ⇧⌘I) reads every
 track, BPM, key, genre and crate. Songs you also have on Spotify are **linked, not
 duplicated** (artist + title matching that understands "feat.", "- X Remix" vs "(X Remix)",
 radio/extended/original mix), so a track can be *in both*. Serato analysed the whole file, so
@@ -220,8 +225,11 @@ survive re-imports and analyser upgrades.
   .xlsx, CSV or pasted). Every song in them is flagged as used (clock icon, "Used in Mix 3")
   and *Hide tracks used in past mixes* keeps new mixes fresh. Songs not in the library yet stay
   listed and link up when imported.
-- **Library filter**: All · Spotify · Serato · In both · Not in Serato, with counts. Icons on
+- **Source filter**: All · Spotify · Serato · In both · Not in Serato, with counts. Icons on
   every row show where a track lives.
+- **Mixing keeps its place**: a trail of earlier seeds with Back; mixing from inside a crate
+  suggests from that crate (or the whole library); *Add to crate* on the mix panel builds a
+  mixtape hop by hop. Filter preferences (hide used, source, energy, mix settings) persist.
 
 ## Waveforms
 
