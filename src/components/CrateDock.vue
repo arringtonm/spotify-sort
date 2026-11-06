@@ -19,7 +19,7 @@
       >
         <span class="shrink-0 px-2 text-xs font-medium text-muted">Drop on a crate</span>
         <div
-          v-for="crate in crates.crates"
+          v-for="crate in crates.userCrates"
           :key="crate.id"
           :class="target(over === crate.id)"
           @dragenter="drag.allowDrop($event) && (over = crate.id)"

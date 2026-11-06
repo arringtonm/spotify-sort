@@ -63,6 +63,22 @@
               Mixes at half or double the seed track's tempo.
             </dd>
           </div>
+          <div class="flex gap-3">
+            <dt class="w-14 shrink-0">
+              <SourceIcons :track="{ id: 'legend', uri: 'spotify:track:legend', serato: { path: '' } }" />
+            </dt>
+            <dd class="text-muted">
+              In Spotify (green) and in your Serato library (record). A grey record means Serato can't find the file.
+            </dd>
+          </div>
+          <div class="flex gap-3">
+            <dt class="w-14 shrink-0">
+              <History class="size-3.5 text-warn" />
+            </dt>
+            <dd class="text-muted">
+              Already used in a past mixtape — the row's ⋯ menu says which.
+            </dd>
+          </div>
         </dl>
       </PopoverContent>
     </PopoverPortal>
@@ -71,8 +87,9 @@
 
 <script setup>
 import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
-import { CircleHelp, PenLine } from '@lucide/vue';
+import { CircleHelp, PenLine, History } from '@lucide/vue';
 import Button from './ui/Button.vue';
+import SourceIcons from './SourceIcons.vue';
 import { floatingPanel } from './ui/menu.js';
 import { keyColor } from '@/lib/keyColors.js';
 </script>

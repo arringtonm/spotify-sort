@@ -77,7 +77,57 @@ export function waveformInWorker({ channels, length, sampleRate }) {
   return waveformPool.submit({ channels: buffers, length, sampleRate }, buffers);
 }
 
+/**
+ * A stretch from the middle of a long recording, downmixed to mono. Two minutes
+ * of the real track beats a 30s preview for key, while keeping memory bounded
+ * (a whole 7-minute stereo decode is ~150 MB).
+ */
+export function middleSegment({ channels, length, sampleRate }, seconds = 120) {
+  const take = Math.min(length, Math.round(seconds * sampleRate));
+  const start = Math.max(0, Math.floor((length - take) / 2));
+  const mono = new Float32Array(take);
+  for (const channel of channels) {
+    for (let i = 0; i < take; i++) mono[i] += channel[start + i] / channels.length;
+  }
+  return { channels: [mono], length: take, sampleRate };
+}
+
+/** Analyse the user's own copy of a track (Serato), when this build can read files. */
+async function analyseLocalFile(track) {
+  const { readAudioFile, canReadLocalLibraries } = await import('./localLibraries.js');
+  if (!canReadLocalLibraries) return null;
+  const pcm = await decodeAudio(await readAudioFile(track.serato.path));
+  const segment = middleSegment(pcm);
+  const analysis = await analyseInWorker(segment.channels, segment.length, segment.sampleRate);
+  return {
+    id: track.id,
+    status: 'ok',
+    enrichedAt: Date.now(),
+    tempo: analysis.tempo,
+    tempoSource: 'analysis',
+    tempoConfidence: analysis.tempoConfidence,
+    pitchClass: analysis.pitchClass,
+    key: displayName(analysis.pitchClass),
+    mode: analysis.mode,
+    keyStrength: analysis.keyStrength,
+    keyConfident: analysis.keyConfident,
+    keySource: 'analysis',
+    analysedFrom: 'file',
+    // The waveform of a 2-minute slice would mislead; playback builds the full one.
+    waveform: null,
+  };
+}
+
 export async function analyseTrack(track) {
+  // Your own file first: full quality, no catalogue lookup needed.
+  if (track.serato?.path && !track.serato.missing) {
+    try {
+      const local = await analyseLocalFile(track);
+      if (local) return local;
+    } catch {
+      /* moved or unreadable: fall back to a preview */
+    }
+  }
   let match = await resolveDeezer(track);
   // Tracks read from Spotify's embed page carry their own 30s preview; use it
   // when Deezer has no match.

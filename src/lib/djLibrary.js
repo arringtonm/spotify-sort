@@ -40,7 +40,7 @@ export function fromRekordboxKey(tonality) {
   };
 }
 
-function finalise(raw) {
+export function finalise(raw) {
   const { pitchClass, mode } = raw;
   return {
     id: raw.id || `dj:${raw.artist}::${raw.title}`.toLowerCase(),

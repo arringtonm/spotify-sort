@@ -155,7 +155,7 @@
         v-if="rows.length"
         :rows="rows"
         :ordered="ordered"
-        :reorderable="Boolean(crates.active)"
+        :reorderable="crates.activeEditable"
         @reorder="(from, to) => crates.moveVisible(crates.activeId, from, to)"
         @seed="seed"
         @edit="editing = $event"
@@ -243,6 +243,7 @@
       @close="editing = null"
     />
     <CrateDialogs />
+    <MixtapeImport />
     <CrateDock />
   </div>
 </template>
@@ -267,6 +268,7 @@ import CrateHeader from '@/components/CrateHeader.vue';
 import CrateDialogs from '@/components/CrateDialogs.vue';
 import CrateDock from '@/components/CrateDock.vue';
 import DensityToggle from '@/components/DensityToggle.vue';
+import MixtapeImport from '@/components/MixtapeImport.vue';
 import { useCratesStore, CRATES_STORAGE_KEY } from '@/stores/crates.js';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';
@@ -295,6 +297,14 @@ watch(
   (id) => {
     if (id && filters.seedTrack) filters.clearSeed();
     window.scrollTo({ top: 0 });
+  }
+);
+// Past mixtapes are stored as rows; re-match them whenever the library changes,
+// so a song imported today is flagged if it was in a mix years ago.
+watch(
+  () => library.raw,
+  (raw) => {
+    if (!library.isDemo) crates.relinkMixtapes(raw);
   }
 );
 // Another tab edited crates.

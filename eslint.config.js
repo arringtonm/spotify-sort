@@ -3,7 +3,7 @@ import globals from 'globals';
 import pluginVue from 'eslint-plugin-vue';
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/gen/**'] },
 
   js.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
@@ -24,7 +24,7 @@ export default [
   },
 
   {
-    files: ['test/**/*.js', 'scripts/**/*.mjs', 'vite.config.js', 'eslint.config.js'],
+    files: ['test/**/*.js', 'scripts/**/*.mjs', 'vite.config.js', 'vite-local-libraries.js', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
 ];

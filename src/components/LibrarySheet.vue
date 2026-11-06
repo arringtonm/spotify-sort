@@ -41,6 +41,41 @@
         <span>{{ library.error }}</span>
       </div>
 
+      <!-- 0. Your own libraries on this Mac: one click, no picker. -->
+      <section aria-labelledby="lib-yours">
+        <SectionTitle
+          id="lib-yours"
+          :icon="Disc3"
+        >
+          Your libraries
+        </SectionTitle>
+        <div class="space-y-2">
+          <SourceRow
+            v-if="canReadLocalLibraries"
+            :icon="Disc3"
+            title="Serato library"
+            :subtitle="seratoSubtitle"
+            :action="hasSerato ? 'Sync' : 'Import'"
+            :loading="library.busy && library.job?.title === 'Serato library'"
+            :disabled="library.busy || seratoLibraries?.length === 0"
+            @run="library.importSerato()"
+          />
+          <p
+            v-else
+            class="rounded-lg bg-surface-2 px-3 py-2.5 text-sm text-muted"
+          >
+            The desktop app imports your whole Serato library and its crates automatically. In a browser, export a CSV from Serato and use DJ software below.
+          </p>
+          <SourceRow
+            :icon="History"
+            title="Past mixtapes"
+            subtitle="A spreadsheet of mixes, so songs you've used are flagged"
+            action="Choose"
+            @run="openMixtapes"
+          />
+        </div>
+      </section>
+
       <!-- 1. Paste a link: the fastest path, works from any share sheet. -->
       <section aria-labelledby="lib-link">
         <SectionTitle
@@ -477,6 +512,8 @@ import {
   CircleCheck,
   WifiOff,
   AudioWaveform,
+  Disc3,
+  History,
 } from '@lucide/vue';
 import { AUDIO_ACCEPT, isAudioFile } from '@/lib/audioFiles.js';
 import { useOnline } from '@vueuse/core';
@@ -494,6 +531,7 @@ import { useToastStore } from '@/stores/toasts.js';
 import { EMBED_PROXY } from '@/services/spotifyApi.js';
 import { parseSourceLink } from '@/lib/sourceLinks.js';
 import { useUi } from '@/composables/useUi.js';
+import { canReadLocalLibraries, findSeratoLibraries } from '@/services/localLibraries.js';
 
 const props = defineProps({ open: Boolean });
 const emit = defineEmits(['update:open']);
@@ -513,6 +551,35 @@ const SectionTitle = (props, { slots }) =>
 SectionTitle.props = ['id', 'icon'];
 
 const busyWith = ref(null);
+
+/** One dialog at a time: close the Library sheet, then open the importer. */
+function openMixtapes() {
+  emit('update:open', false);
+  setTimeout(() => (ui.mixtapeImportOpen.value = true), 150);
+}
+
+// ---- Serato ----------------------------------------------------------------
+const seratoLibraries = ref(null);
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (!isOpen || !canReadLocalLibraries) return;
+    try {
+      seratoLibraries.value = await findSeratoLibraries();
+    } catch {
+      seratoLibraries.value = [];
+    }
+  },
+  { immediate: true }
+);
+const hasSerato = computed(() => library.raw.some((t) => t.serato));
+const seratoSubtitle = computed(() => {
+  const libs = seratoLibraries.value;
+  if (libs == null) return 'Looking for Serato on this Mac…';
+  if (!libs.length) return 'No Serato library found in ~/Music or on a drive';
+  const crates = libs.reduce((n, l) => n + l.crateCount, 0);
+  return `${libs.map((l) => l.label).join(' + ')} · ${crates} crates · tracks, BPM, key and crates`;
+});
 const showDevNotes = import.meta.env.DEV || !auth.diagnostics.originMatches;
 
 // ---- Link import -----------------------------------------------------------

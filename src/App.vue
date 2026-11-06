@@ -9,7 +9,8 @@
     <NowPlayingBar />
     <LibrarySheet v-model:open="ui.libraryOpen.value" />
     <AppToaster />
-    <UpdatePrompt />
+    <!-- The desktop app updates by rebuilding; no service worker there. -->
+    <UpdatePrompt v-if="!isTauri" />
   </TooltipProvider>
 </template>
 
@@ -27,8 +28,11 @@ import { usePlayerStore } from './stores/player.js';
 import { useToastStore } from './stores/toasts.js';
 import { useUi } from './composables/useUi.js';
 import { useTheme } from './composables/useTheme.js';
+import { useAppMenu } from './composables/useAppMenu.js';
+import { isTauri } from './platform/index.js';
 
 useTheme();
+useAppMenu();
 const ui = useUi();
 const player = usePlayerStore();
 const toasts = useToastStore();

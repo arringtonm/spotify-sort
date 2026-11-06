@@ -19,7 +19,7 @@
         <div class="min-w-0 flex-1">
           <div class="flex items-start gap-1">
             <p class="min-w-0 flex-1 pt-0.5 text-xs font-medium tracking-wide text-accent uppercase">
-              Crate
+              {{ kindLabel }}
             </p>
             <Button
               variant="ghost"
@@ -31,6 +31,12 @@
               <X />
             </Button>
           </div>
+          <p
+            v-if="crates.activePath.length > 1"
+            class="truncate text-xs text-muted"
+          >
+            {{ crates.activePath.slice(0, -1).join(' › ') }}
+          </p>
           <h2
             id="crate-title"
             class="line-clamp-2 font-semibold leading-snug"
@@ -44,6 +50,7 @@
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button
+          v-if="editable"
           variant="secondary"
           size="sm"
           @click="crates.requestRename(crate.id)"
@@ -55,6 +62,7 @@
           :name="crate.name"
         />
         <Button
+          v-if="deletable"
           variant="danger-ghost"
           size="icon-sm"
           class="ml-auto"
@@ -66,8 +74,30 @@
         </Button>
       </div>
       <p class="text-xs leading-5 text-muted">
-        Drag rows to reorder, or use ⋯ → Move up / Move down. Filters apply to All tracks.
+        {{ hint }}
       </p>
+      <!-- Past-mix songs that aren't in the library: still listed, still "used". -->
+      <details
+        v-if="crates.activeView.unmatched.length"
+        class="rounded-lg bg-surface-2 px-3 py-2 text-sm"
+      >
+        <summary class="cursor-pointer text-muted">
+          {{ crates.activeView.unmatched.length }} songs not in your library
+        </summary>
+        <ul class="mt-2 max-h-56 space-y-1 overflow-y-auto text-xs">
+          <li
+            v-for="(e, i) in crates.activeView.unmatched"
+            :key="i"
+            class="truncate"
+          >
+            <span class="text-text">{{ e.title }}</span> <span class="text-muted">— {{ e.artist }}</span>
+            <span
+              v-if="crates.activeView.isFolder"
+              class="text-subtle"
+            > · {{ e.mix }}</span>
+          </li>
+        </ul>
+      </details>
     </template>
 
     <template v-else>
@@ -84,6 +114,7 @@
       <span class="hidden shrink-0 text-xs text-muted sm:inline">{{ summary }}</span>
       <span class="flex-1" />
       <Button
+        v-if="editable"
         variant="ghost"
         size="icon-sm"
         aria-label="Rename crate"
@@ -96,6 +127,7 @@
         :name="crate.name"
       />
       <Button
+        v-if="deletable"
         variant="danger-ghost"
         size="icon-sm"
         aria-label="Delete crate"
@@ -129,11 +161,30 @@ const sidebar = computed(() => props.variant === 'sidebar');
 const crates = useCratesStore();
 const crate = computed(() => crates.active);
 const rows = computed(() => crates.activeView.rows);
+const editable = computed(() => crate.value?.origin === 'user');
+// Your crates, and a whole past-mixtape folder (re-importable), can be deleted.
+// Serato's come back on the next sync, so deleting them here would mislead.
+const deletable = computed(
+  () => crate.value?.origin === 'user' || (crate.value?.origin === 'mixtape' && !crate.value.parentId)
+);
+const kindLabel = computed(
+  () =>
+    ({ serato: 'Serato crate', mixtape: crates.activeView.isFolder ? 'Past mixtapes' : 'Past mixtape' })[
+      crate.value?.origin
+    ] ?? (crates.activeView.isFolder ? 'Folder' : 'Crate')
+);
+const hint = computed(() => {
+  const origin = crate.value?.origin;
+  if (origin === 'serato') return 'Synced from Serato. Change it in Serato, then import Serato again.';
+  if (origin === 'mixtape') return 'Everything here is marked as used. Hide used tracks with the Library filter.';
+  if (crates.activeView.isFolder) return 'Shows this crate and everything inside it.';
+  return 'Drag rows to reorder, or use ⋯ → Move up / Move down. Filters apply to All tracks.';
+});
 const summary = computed(() => {
   const n = rows.value.length;
   const parts = [`${n} ${n === 1 ? 'track' : 'tracks'}`];
   if (n) parts.push(formatTotalDuration(rows.value));
-  if (crates.activeView.missing) parts.push(`${crates.activeView.missing} no longer in library`);
+  if (crates.activeView.missing) parts.push(`${crates.activeView.missing} not in your library`);
   return parts.join(' · ');
 });
 </script>

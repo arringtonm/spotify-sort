@@ -2,7 +2,12 @@
   <header
     class="sticky top-0 z-30 border-b border-border bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur-md"
   >
-    <div class="mx-auto flex h-14 max-w-[1600px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-5">
+    <!-- In the desktop app the header doubles as the title bar: it drags the
+         window, and leaves room for the traffic lights. -->
+    <div
+      class="mx-auto flex h-14 max-w-[1600px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-5 [.desktop-app_&]:pl-[84px]"
+      data-tauri-drag-region
+    >
       <RouterLink
         to="/"
         class="mr-1 flex items-center gap-2 rounded-lg font-semibold tracking-tight"
@@ -28,7 +33,10 @@
         <ChevronDown class="text-muted" />
       </Button>
 
-      <div class="flex-1" />
+      <div
+        class="flex-1 self-stretch"
+        data-tauri-drag-region
+      />
 
       <span
         v-if="!online"

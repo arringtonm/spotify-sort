@@ -12,11 +12,17 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "@lucide/vue": "1.57.0",
     "@tanstack/vue-virtual": "3.13.47",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-http": "2.8.3",
+    "@tauri-apps/plugin-opener": "2.7.2",
     "@vueuse/core": "14.4.0",
     "camelot-wheel": "^0.2.3",
     "clsx": "2.1.1",
@@ -31,6 +37,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "4.3.3",
+    "@tauri-apps/cli": "2.12.4",
     "@vite-pwa/assets-generator": "2.0.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "eslint": "^10.9.1",

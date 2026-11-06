@@ -113,6 +113,7 @@ import { useLibraryStore } from '@/stores/library.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useToastStore } from '@/stores/toasts.js';
 import { spotifyUrl } from '@/lib/trackInfo.js';
+import { openExternal } from '@/platform/index.js';
 
 const props = defineProps({
   rows: { type: Array, required: true },
@@ -159,7 +160,7 @@ async function save() {
       title: 'Playlist saved',
       description: result.name,
       tone: 'success',
-      action: result.url ? { label: 'Open in Spotify', run: () => window.open(result.url, '_blank', 'noopener') } : null,
+      action: result.url ? { label: 'Open in Spotify', run: () => openExternal(result.url) } : null,
     });
   } catch (error) {
     toasts.push({ title: 'Could not save playlist', description: error.message, tone: 'error' });

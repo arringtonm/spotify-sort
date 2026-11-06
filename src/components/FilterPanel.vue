@@ -1,5 +1,44 @@
 <template>
   <div :class="dense ? 'space-y-5' : 'space-y-7'">
+    <!-- Which library: shown once there's more than one source. -->
+    <section
+      v-if="filters.hasMultipleSources || usageCount"
+      aria-labelledby="f-source"
+      class="space-y-3"
+    >
+      <h3
+        id="f-source"
+        class="text-sm font-semibold"
+      >
+        Library
+      </h3>
+      <div
+        v-if="filters.hasMultipleSources"
+        role="radiogroup"
+        aria-labelledby="f-source"
+        class="flex flex-wrap gap-2"
+      >
+        <button
+          v-for="option in SOURCE_FILTERS"
+          :key="option.value"
+          type="button"
+          role="radio"
+          :aria-checked="filters.sourceFilter === option.value"
+          class="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors pointer-coarse:h-10 aria-checked:border-accent aria-checked:bg-accent-soft aria-checked:text-text border-border text-muted hover:border-border-strong hover:text-text"
+          @click="filters.sourceFilter = option.value"
+        >
+          {{ option.label }}
+          <span class="text-xs text-subtle tabular">{{ filters.sourceCounts[option.value].toLocaleString() }}</span>
+        </button>
+      </div>
+      <Switch
+        v-if="usageCount"
+        v-model="filters.hideUsed"
+        label="Hide tracks used in past mixes"
+        :hint="`${usageCount.toLocaleString()} tracks appear in your past mixtapes.`"
+      />
+    </section>
+
     <!-- In mix mode key and tempo come from the seed track (see SeedCard). -->
     <template v-if="!filters.seedTrack">
       <section aria-labelledby="f-key">
@@ -176,7 +215,8 @@ import RangeSlider from './ui/RangeSlider.vue';
 import CamelotWheel from './CamelotWheel.vue';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';
-import { codeFor } from '@/lib/trackInfo.js';
+import { codeFor, SOURCE_FILTERS } from '@/lib/trackInfo.js';
+import { useCratesStore } from '@/stores/crates.js';
 
 /** Tighter spacing and a height-aware wheel for the desktop sidebar. */
 defineProps({ dense: Boolean });
@@ -204,6 +244,8 @@ const keyHint = computed(() => {
 const filters = useFiltersStore();
 const library = useLibraryStore();
 const showAllGenres = ref(false);
+const crates = useCratesStore();
+const usageCount = computed(() => crates.usage.size);
 
 const visibleGenres = computed(() =>
   showAllGenres.value ? filters.genreOptions : filters.genreOptions.slice(0, GENRE_LIMIT)

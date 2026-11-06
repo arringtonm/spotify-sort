@@ -15,8 +15,9 @@ import {
   fromCamelotCode,
 } from '../lib/camelot.js';
 import { displayName } from '../lib/musicalKey.js';
-import { camelotRank, codeFor, keyRisk } from '../lib/trackInfo.js';
+import { camelotRank, codeFor, keyRisk, matchesSource, trackSources, SOURCE_FILTERS } from '../lib/trackInfo.js';
 import { useLibraryStore } from './library.js';
+import { useCratesStore } from './crates.js';
 
 export const SORT_FIELDS = [
   { key: 'artist', label: 'Artist' },
@@ -38,6 +39,10 @@ export const useFiltersStore = defineStore('filters', {
     includeUnknown: true,
     query: '',
     genres: [],
+    // 'all' | 'spotify' | 'serato' | 'both' | 'spotify-only'
+    sourceFilter: 'all',
+    // Hide tracks already used in a past mixtape (an archive folder of crates).
+    hideUsed: false,
     seedTrack: null,
     // Genre-dependent: 3 suits house, wider suits open-format sets.
     bpmTolerance: 3,
@@ -107,12 +112,43 @@ export const useFiltersStore = defineStore('filters', {
       return library.tracks;
     },
 
-    /** Genre narrows every mode, including set building. */
+    /** Tallies for the Source filter (spotify, serato, both, spotify-only). */
+    sourceCounts() {
+      const library = useLibraryStore();
+      const c = { all: 0, spotify: 0, serato: 0, both: 0, 'spotify-only': 0 };
+      for (const t of library.tracks) {
+        const s = trackSources(t);
+        c.all++;
+        if (s.has('spotify')) c.spotify++;
+        if (s.has('serato')) c.serato++;
+        if (s.has('spotify') && s.has('serato')) c.both++;
+        if (s.has('spotify') && !s.has('serato')) c['spotify-only']++;
+      }
+      return c;
+    },
+
+    /** Only offer the Source filter when there is more than one source. */
+    hasMultipleSources() {
+      const c = this.sourceCounts;
+      return c.serato > 0 && c.serato < c.all;
+    },
+
+    /**
+     * Genre, source and "not used before" narrow every mode, including set
+     * building: they say *which tracks are candidates*, not how they mix.
+     */
     genrePool() {
-      return (pool) =>
-        this.genres.length
-          ? pool.filter((t) => (t.genres || []).some((g) => this.genres.includes(g)))
-          : pool;
+      const usage = useCratesStore().usage;
+      return (pool) => {
+        let out = pool;
+        if (this.genres.length) out = out.filter((t) => (t.genres || []).some((g) => this.genres.includes(g)));
+        if (this.sourceFilter !== 'all') out = out.filter((t) => matchesSource(t, this.sourceFilter));
+        if (this.hideUsed && usage.size) {
+          const seedId = this.seedTrack?.id;
+          out = out.filter((t) => t.id === seedId || !usage.has(t.id));
+        }
+        return out;
+      };
     },
 
     setPath() {
@@ -192,8 +228,15 @@ export const useFiltersStore = defineStore('filters', {
       if (this.query && !this.ordered) chips.push({ id: 'query', label: `“${this.query}”` });
       // Key and tempo step aside while mixing (the seed card says so); genre and
       // search still narrow, so they still show.
+      const scope = () => {
+        if (this.sourceFilter !== 'all') {
+          chips.push({ id: 'source', label: SOURCE_FILTERS.find((f) => f.value === this.sourceFilter)?.label ?? this.sourceFilter });
+        }
+        if (this.hideUsed) chips.push({ id: 'used', label: 'Not in past mixes' });
+      };
       if (this.seedTrack) {
         this.genres.forEach((g) => chips.push({ id: `genre:${g}`, label: g }));
+        scope();
         return chips;
       }
       if (!this.allKeysSelected) {
@@ -217,6 +260,7 @@ export const useFiltersStore = defineStore('filters', {
       }
       this.genres.forEach((g) => chips.push({ id: `genre:${g}`, label: g }));
       if (!this.includeUnknown) chips.push({ id: 'unknown', label: 'Hide unanalysed' });
+      scope();
       return chips;
     },
 
@@ -280,6 +324,8 @@ export const useFiltersStore = defineStore('filters', {
       this.selectedCodes = [...ALL_CAMELOT_CODES];
       this.matchMultiples = false;
       this.includeUnknown = true;
+      this.sourceFilter = 'all';
+      this.hideUsed = false;
     },
 
     removeFilter(id) {
@@ -289,6 +335,8 @@ export const useFiltersStore = defineStore('filters', {
         this.tempoRange = [this.bpmMin, this.bpmMax];
         this.matchMultiples = false;
       } else if (id === 'unknown') this.includeUnknown = true;
+      else if (id === 'source') this.sourceFilter = 'all';
+      else if (id === 'used') this.hideUsed = false;
       else if (id.startsWith('genre:')) {
         const genre = id.slice('genre:'.length);
         this.genres = this.genres.filter((g) => g !== genre);

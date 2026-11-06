@@ -147,6 +147,27 @@ export const usePlayerStore = defineStore('player', {
       return this.play(track);
     },
 
+    /** Play a file a library points at. Returns false when this build can't read it. */
+    async playLocalPath(track, player) {
+      const { readAudioFile, canReadLocalLibraries } = await import('../services/localLibraries.js');
+      if (!canReadLocalLibraries) return false;
+      const bytes = await readAudioFile(track.serato.path);
+      if (this.loadingId !== track.id) return true;
+      const cached = await cachedWaveform(track.id);
+      if (this.loadingId !== track.id) return true;
+      this.waveform = cached ? markRaw(cached) : null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(new Blob([bytes]));
+      player.src = objectUrl;
+      await player.play();
+      if (this.loadingId !== track.id) return true;
+      this.currentId = track.id;
+      this.updateMediaMetadata(track);
+      // The Blob above copied the bytes, so the original buffer can be decoded.
+      if (!cached) this.buildWaveform(track.id, bytes);
+      return true;
+    },
+
     async play(track) {
       const player = this.element();
       player.pause();
@@ -171,6 +192,12 @@ export const usePlayerStore = defineStore('player', {
           this.currentId = track.id;
           this.updateMediaMetadata(track);
           return;
+        }
+
+        // Your own copy (Serato): play the real file, full length.
+        if (track.serato?.path && !track.serato.missing) {
+          const played = await this.playLocalPath(track, player).catch(() => false);
+          if (played || this.loadingId !== track.id) return;
         }
 
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {

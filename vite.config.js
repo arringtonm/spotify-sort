@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import localLibraries from './vite-local-libraries.js';
 
 /**
  * A service worker's scope is fixed at its URL, so the app needs a real base
@@ -17,6 +18,8 @@ export default defineConfig({
   plugins: [
     vue(),
     tailwindcss(),
+    // Dev only: read this Mac's Serato / Music libraries (the desktop app does this natively).
+    localLibraries(),
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,

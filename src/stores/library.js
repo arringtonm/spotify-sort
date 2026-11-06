@@ -39,6 +39,12 @@ import {
 } from '../services/analysisQueue.js';
 import { downloadCsv } from '../lib/exportFormats.js';
 import { useOverridesStore } from './overrides.js';
+import { useCratesStore } from './crates.js';
+import { useToastStore } from './toasts.js';
+import { parseSeratoDatabase, parseSeratoCrate } from '../lib/seratoDb.js';
+import { planSeratoImport } from '../lib/seratoMerge.js';
+import { createMatcher } from '../lib/trackMatch.js';
+import { findSeratoLibraries, readSeratoLibrary, canReadLocalLibraries } from '../services/localLibraries.js';
 import { useAuthStore } from './auth.js';
 import { requestPersistence } from '../services/storage.js';
 import { decodeAudio, analyseInWorker, releaseAnalysisWorkers } from '../services/enrich.js';
@@ -117,6 +123,7 @@ export const useLibraryStore = defineStore('library', {
         csv: 'CSV import',
         link: 'Imported link',
         files: 'Audio files',
+        serato: 'Serato',
       })[state.origin] ?? state.origin,
     total: (state) => state.raw.length,
     /** Work still outstanding — drives the Resume affordance. */
@@ -632,6 +639,130 @@ export const useLibraryStore = defineStore('library', {
         await this.analyse(pending);
         return this.raw;
       });
+    },
+
+    /**
+     * Import the whole Serato library — found automatically on this Mac (every
+     * `_Serato_` folder: ~/Music and each drive) — with its crates.
+     *
+     * Tracks that are already here (e.g. from Spotify) are linked rather than
+     * duplicated, so a song you have in both shows as both. Serato's BPM and key
+     * come from the full file, so they replace preview estimates.
+     */
+    async importSerato() {
+      if (!canReadLocalLibraries) {
+        throw new Error('Reading Serato automatically needs the desktop app. Choose the “database V2” file instead.');
+      }
+      if (this.busy) {
+        useToastStore().push({ title: 'Another import is running', description: 'Try again when it finishes.' });
+        return;
+      }
+      this.startJob('Serato library', [
+        ['find', 'Find Serato on this Mac'],
+        ['read', 'Read tracks and crates'],
+        ['match', 'Match with tracks already here'],
+        ['save', 'Add to your library'],
+        ['crates', 'Bring in crates'],
+      ]);
+      return this.withBusy(async () => {
+        const libraries = await findSeratoLibraries();
+        if (!libraries.length) {
+          throw new Error('No Serato library found in ~/Music/_Serato_ or on any connected drive.');
+        }
+        this.advance(
+          'find',
+          libraries.map((l) => l.label).join(', '),
+          'read'
+        );
+
+        const tracks = [];
+        const crateEntries = [];
+        for (const lib of libraries) {
+          const { database, crates } = await readSeratoLibrary(lib.root);
+          tracks.push(...parseSeratoDatabase(database, lib.volume));
+          for (const c of crates) crateEntries.push({ name: c.name, paths: parseSeratoCrate(c.data, lib.volume) });
+        }
+        // Which crates each file is in, for the track's details.
+        const cratesByPath = new Map();
+        for (const c of crateEntries) {
+          const label = c.name.split('%%').join(' › ');
+          for (const path of c.paths) {
+            if (!cratesByPath.has(path)) cratesByPath.set(path, []);
+            cratesByPath.get(path).push(label);
+          }
+        }
+        for (const t of tracks) t.serato.crates = cratesByPath.get(t.serato.path) ?? [];
+        this.advance(
+          'read',
+          `${tracks.length.toLocaleString()} tracks · ${crateEntries.length} crates`,
+          'match'
+        );
+
+        const existing = await getAllTracks();
+        const plan = planSeratoImport(this.isDemo ? [] : existing, tracks);
+        this.advance(
+          'match',
+          `${plan.linked.toLocaleString()} matched to tracks already here · ${plan.added.toLocaleString()} only in Serato`,
+          'save'
+        );
+
+        if (this.isDemo) await clearTracks();
+        const merge = await putTracks(
+          plan.newTracks.map((t) => ({
+            ...t,
+            analysisState: t.tempo != null && t.key != null ? 'done' : PENDING,
+          }))
+        );
+        await patchTracks(plan.patches);
+        this.advance('save', describeMerge({ added: merge.added, kept: plan.linked + plan.updated }), 'crates');
+
+        const crates = useCratesStore();
+        const count = crates.syncSerato(
+          crateEntries.map((c) => ({
+            name: c.name,
+            trackIds: c.paths.map((p) => plan.idByPath.get(p)).filter(Boolean),
+          }))
+        );
+        this.stepDone('crates', `${count} crates, kept in sync with Serato`);
+
+        await setMeta('library', { origin: 'serato', at: Date.now() });
+        this.raw = await getAllTracks();
+        this.origin = 'serato';
+        this.originDetail = null;
+        await this.refreshCounts();
+        const missingAnalysis = tracks.filter((t) => t.tempo == null || t.key == null).length;
+        this.summary =
+          `${tracks.length.toLocaleString()} Serato tracks: ${plan.linked.toLocaleString()} matched your Spotify tracks, ` +
+          `${merge.added.toLocaleString()} added. BPM and key come from Serato's full-track analysis.` +
+          (missingAnalysis ? ` ${missingAnalysis} have no BPM or key in Serato yet.` : '');
+        return this.raw;
+      });
+    },
+
+    /**
+     * Past mixtapes from a spreadsheet (see lib/mixtapeSheet.js). Each mix
+     * becomes a crate in an archive folder, and every song in them is flagged
+     * as already used. Songs not in the library yet stay listed, and link up
+     * when they're imported.
+     */
+    importMixtapes(folderName, mixes) {
+      const find = createMatcher(this.tracks);
+      let found = 0;
+      let total = 0;
+      const withIds = mixes.map((mix) => {
+        const trackIds = [];
+        for (const e of mix.entries) {
+          total++;
+          const match = find(e.artist, e.title);
+          if (match) {
+            found++;
+            trackIds.push(match.id);
+          }
+        }
+        return { name: mix.name, entries: mix.entries, trackIds };
+      });
+      const folder = useCratesStore().importMixtapes(folderName, withIds);
+      return { folder, found, total };
     },
 
     async importFromFile(file) {

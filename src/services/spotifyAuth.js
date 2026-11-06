@@ -12,6 +12,8 @@
  *    an accepted trade-off for a locally-run personal tool with no backend.
  */
 
+import { isTauri, invoke, once } from '../platform/index.js';
+
 const AUTH_HOST = 'https://accounts.spotify.com';
 const STORAGE_KEY = 'spotify-sort.tokens';
 const VERIFIER_KEY = 'spotify-sort.pkce-verifier';
@@ -154,7 +156,9 @@ export async function buildAuthorizeUrl() {
   if (!REDIRECT_URI) throw new Error('VITE_SPOTIFY_REDIRECT_URI is not set');
 
   const diagnostics = redirectDiagnostics();
-  if (!diagnostics.originMatches) {
+  // The desktop app catches the redirect itself (see spotify_sign_in in
+  // src-tauri), so its own origin doesn't need to match.
+  if (!isTauri && !diagnostics.originMatches) {
     throw new Error(
       `You are browsing ${diagnostics.currentOrigin} but the redirect URI is ` +
         `${diagnostics.redirectUri}. Those are different origins, so the sign-in would ` +
@@ -183,9 +187,20 @@ export async function buildAuthorizeUrl() {
   return `${AUTH_HOST}/authorize?${params}`;
 }
 
-/** Send the browser to Spotify's consent screen. */
+/**
+ * Send the browser to Spotify's consent screen. In the desktop app the consent
+ * page opens in its own window; this resolves once that sign-in completes.
+ * Returns true when signed in without leaving the page.
+ */
 export async function login() {
-  window.location.assign(await buildAuthorizeUrl());
+  const url = await buildAuthorizeUrl();
+  if (!isTauri) {
+    window.location.assign(url);
+    return false;
+  }
+  const callback = once('spotify-callback');
+  await invoke('spotify_sign_in', { url, redirect: REDIRECT_URI });
+  return handleRedirect(await callback);
 }
 
 async function postToken(body) {
@@ -210,20 +225,21 @@ async function postToken(body) {
  * Complete the redirect back from Spotify. Returns true if a login was consumed.
  * Safe to call on every page load.
  */
-export async function handleRedirect() {
-  const url = new URL(window.location.href);
+export async function handleRedirect(href = window.location.href) {
+  const fromPage = href === window.location.href;
+  const url = new URL(href);
   const code = url.searchParams.get('code');
   const returnedState = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
   if (error) {
-    scrubUrl(url);
+    if (fromPage) scrubUrl(url);
     throw new Error(`Spotify authorisation denied: ${error}`);
   }
   if (!code) return false;
 
   const verifier = takePending(returnedState);
-  scrubUrl(url);
+  if (fromPage) scrubUrl(url);
 
   if (!verifier) {
     throw new Error(

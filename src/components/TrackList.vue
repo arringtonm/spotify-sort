@@ -152,7 +152,10 @@
                 <span
                   class="truncate text-sm text-muted"
                   :class="compact ? 'min-w-0 shrink-[2]' : 'block'"
-                >{{ track.artist }}</span>
+                ><SourceIcons
+                  :track="track"
+                  class="mr-1"
+                />{{ track.artist }}</span>
               </span>
             </button>
           </div>
@@ -233,6 +236,7 @@ import { useElementSize, useMediaQuery } from '@vueuse/core';
 import { Play, Pause, Disc3, ArrowUp, Shuffle } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import KeyBadge from './KeyBadge.vue';
+import SourceIcons from './SourceIcons.vue';
 import TrackMenu from './TrackMenu.vue';
 import { useFiltersStore } from '@/stores/filters.js';
 import { usePlayerStore } from '@/stores/player.js';

@@ -39,11 +39,22 @@
 
         <!-- Crates inline, each with a check: see and change where a track
              lives in one place. (No submenu — nested menus are fiddly on touch.) -->
+        <!-- Already used: say where, so you can judge whether a repeat matters. -->
+        <p
+          v-if="usedIn.length"
+          class="mx-1 mb-1 flex items-start gap-2 rounded-md bg-warn-soft px-2 py-1.5 text-xs"
+        >
+          <History
+            class="mt-px size-3.5 shrink-0 text-warn"
+            aria-hidden="true"
+          />
+          <span>Used in {{ usedIn.join(', ') }}</span>
+        </p>
         <DropdownMenuLabel class="px-2.5 pt-1.5 pb-1 text-xs font-medium text-subtle">
           Crates
         </DropdownMenuLabel>
         <DropdownMenuCheckboxItem
-          v-for="crate in crates.crates"
+          v-for="crate in crates.userCrates"
           :key="crate.id"
           :model-value="inCrate(crate.id)"
           :class="checkClass"
@@ -61,7 +72,7 @@
         </MenuItem>
 
         <!-- Inside a crate: keyboard- and touch-friendly reordering. -->
-        <template v-if="crates.active && track.position">
+        <template v-if="crates.activeEditable && track.position">
           <DropdownMenuSeparator class="my-1 h-px bg-border" />
           <MenuItem
             :disabled="track.position === 1"
@@ -122,6 +133,7 @@ import {
   FolderMinus,
   ArrowUp,
   ArrowDown,
+  History,
 } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import MenuItem from './ui/MenuItem.vue';
@@ -130,6 +142,7 @@ import { usePlayerStore } from '@/stores/player.js';
 import { useToastStore } from '@/stores/toasts.js';
 import { useCratesStore } from '@/stores/crates.js';
 import { canSeed, spotifyUrl } from '@/lib/trackInfo.js';
+import { openExternal } from '@/platform/index.js';
 
 const props = defineProps({ track: { type: Object, required: true } });
 defineEmits(['seed', 'edit']);
@@ -138,9 +151,10 @@ const player = usePlayerStore();
 const toasts = useToastStore();
 const crates = useCratesStore();
 const url = computed(() => spotifyUrl(props.track));
+const usedIn = computed(() => crates.usage.get(props.track.id) ?? []);
 
 function open(href) {
-  window.open(href, '_blank', 'noopener');
+  openExternal(href);
 }
 
 const checkClass =

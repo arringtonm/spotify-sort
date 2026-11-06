@@ -1,4 +1,5 @@
 import { getAccessToken, isLoggedIn } from './spotifyAuth.js';
+import { isTauri, nativeFetch } from '../platform/index.js';
 import { extractEmbedTracks } from '../lib/spotifyEmbed.js';
 
 const API = 'https://api.spotify.com/v1';
@@ -262,12 +263,14 @@ export async function getTrack(trackId) {
  * no CORS headers). In development Vite proxies /spotify-embed; in production
  * VITE_EMBED_PROXY_URL points at the Cloudflare Worker in proxy/.
  */
-export const EMBED_PROXY =
-  import.meta.env.VITE_EMBED_PROXY_URL || (import.meta.env.DEV ? '/spotify-embed' : '');
+export const EMBED_PROXY = isTauri
+  ? // The desktop app isn't bound by CORS, so it reads Spotify's page directly.
+    'https://open.spotify.com/embed'
+  : import.meta.env.VITE_EMBED_PROXY_URL || (import.meta.env.DEV ? '/spotify-embed' : '');
 
 export async function getEmbedTracks(type, id) {
   if (!EMBED_PROXY) throw new Error('No embed proxy configured.');
-  const response = await fetch(`${EMBED_PROXY.replace(/\/$/, '')}/${type}/${id}`);
+  const response = await nativeFetch(`${EMBED_PROXY.replace(/\/$/, '')}/${type}/${id}`);
   if (response.status === 404) {
     throw new Error("Spotify couldn't find that link. Check that it's public.");
   }

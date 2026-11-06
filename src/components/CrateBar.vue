@@ -13,8 +13,9 @@
     >
       <Library class="size-4" /> All tracks
     </button>
+    <CrateBrowser v-if="crates.crates.length" />
     <button
-      v-for="crate in crates.crates"
+      v-for="crate in topUserCrates"
       :key="crate.id"
       type="button"
       :class="[chip(crates.activeId === crate.id), over === crate.id && 'border-accent bg-accent-soft ring-2 ring-accent']"
@@ -55,9 +56,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Library, Folder, FolderOpen, FolderPlus } from '@lucide/vue';
 import Button from './ui/Button.vue';
+import CrateBrowser from './CrateBrowser.vue';
 import { useCratesStore } from '@/stores/crates.js';
 import { useTrackDrag } from '@/composables/useTrackDrag.js';
 import { cn } from '@/lib/cn.js';
@@ -65,6 +67,8 @@ import { cn } from '@/lib/cn.js';
 const crates = useCratesStore();
 const drag = useTrackDrag();
 const over = ref(null);
+/** Your own top-level crates as chips (quick to open, and drop targets). */
+const topUserCrates = computed(() => crates.userCrates.filter((c) => !c.parentId));
 
 function chip(active) {
   return cn(

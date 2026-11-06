@@ -79,3 +79,20 @@ test('sanitiseCrates drops malformed entries and duplicate ids', () => {
   assert.deepEqual(out[0].trackIds, ['1', '3']);
   assert.deepEqual(sanitiseCrates(null), []);
 });
+
+test('crateTree nests and sorts naturally; archiveUsage flags past mixes', async () => {
+  const { crateTree, archiveUsage, cratePath } = await import('../src/lib/crates.js');
+  const list = [
+    { id: 'f', name: 'Summer Disco Mixes', parentId: null, archive: true, trackIds: [] },
+    { id: 'm10', name: 'Mix 10', parentId: 'f', trackIds: ['a'] },
+    { id: 'm2', name: 'Mix 2', parentId: 'f', trackIds: ['a', 'b'] },
+    { id: 'u', name: 'Peak time', parentId: null, trackIds: ['c'] },
+  ];
+  const tree = crateTree(list);
+  assert.deepEqual(tree.map((n) => n.crate.name), ['Peak time', 'Summer Disco Mixes']);
+  assert.deepEqual(tree[1].children.map((n) => n.crate.name), ['Mix 2', 'Mix 10']);
+  const usage = archiveUsage(list);
+  assert.deepEqual(usage.get('a').sort(), ['Mix 10', 'Mix 2']);
+  assert.equal(usage.has('c'), false);
+  assert.deepEqual(cratePath(list[2], new Map(list.map((c) => [c.id, c]))), ['Summer Disco Mixes', 'Mix 2']);
+});

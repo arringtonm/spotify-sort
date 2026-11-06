@@ -77,3 +77,41 @@ export function spotifyUrl(track) {
   if (!track?.id || /:/.test(track.id)) return null;
   return `https://open.spotify.com/track/${track.id}`;
 }
+
+/**
+ * Where a track lives: 'spotify', 'serato', or both (plus 'other' for links,
+ * files and other DJ software). Older records have no `sources`, so infer it.
+ */
+export function trackSources(track) {
+  const sources = new Set(track.sources ?? []);
+  if (track.uri?.startsWith('spotify:track:') || /^[A-Za-z0-9]{22}$/.test(track.id)) sources.add('spotify');
+  if (track.serato) sources.add('serato');
+  if (!sources.size) sources.add('other');
+  return sources;
+}
+
+/** Source filter values, in display order. */
+export const SOURCE_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'spotify', label: 'Spotify' },
+  { value: 'serato', label: 'Serato' },
+  { value: 'both', label: 'In both' },
+  { value: 'spotify-only', label: 'Not in Serato' },
+];
+
+export function matchesSource(track, filter) {
+  if (!filter || filter === 'all') return true;
+  const s = trackSources(track);
+  switch (filter) {
+    case 'spotify':
+      return s.has('spotify');
+    case 'serato':
+      return s.has('serato');
+    case 'both':
+      return s.has('spotify') && s.has('serato');
+    case 'spotify-only':
+      return s.has('spotify') && !s.has('serato');
+    default:
+      return true;
+  }
+}

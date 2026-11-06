@@ -30,7 +30,7 @@
     <span
       v-else
       class="text-sm font-medium text-accent"
-    >Import</span>
+    >{{ action }}</span>
   </button>
 </template>
 
@@ -38,6 +38,7 @@
 defineProps({
   icon: { type: [Object, Function], required: true },
   title: { type: String, required: true },
+  action: { type: String, default: 'Import' },
   subtitle: { type: String, default: '' },
   loading: Boolean,
   disabled: Boolean,
