@@ -1,61 +1,66 @@
 <template>
-  <div class="callback">
+  <div class="mx-auto flex max-w-md flex-col items-center gap-4 px-6 py-24 text-center">
     <template v-if="error">
-      <v-alert
-        type="error"
-        variant="tonal"
-        density="compact"
+      <CircleAlert
+        class="size-8 text-danger"
+        aria-hidden="true"
+      />
+      <h1 class="text-lg font-semibold">
+        Spotify sign-in didn't finish
+      </h1>
+      <p
+        class="text-sm text-muted"
+        role="alert"
       >
         {{ error }}
-      </v-alert>
-      <v-btn
-        class="mt-4"
-        color="primary"
+      </p>
+      <Button
+        variant="primary"
+        as="RouterLink"
         to="/"
       >
         Back to the library
-      </v-btn>
+      </Button>
     </template>
     <template v-else>
-      <v-progress-circular
-        indeterminate
-        color="primary"
+      <span
+        class="size-8 animate-spin rounded-full border-[3px] border-accent border-r-transparent"
+        aria-hidden="true"
       />
-      <p>Completing Spotify sign-in…</p>
+      <p class="text-sm text-muted">
+        Completing Spotify sign-in…
+      </p>
     </template>
   </div>
 </template>
 
-<script>
-import { handleRedirect } from '../services/spotifyAuth.js';
+<script setup>
+import { ref, onMounted } from 'vue';
+import { useRouter, RouterLink } from 'vue-router';
+import { CircleAlert } from '@lucide/vue';
+import Button from '@/components/ui/Button.vue';
+import { handleRedirect } from '@/services/spotifyAuth.js';
+import { useAuthStore } from '@/stores/auth.js';
+import { useToastStore } from '@/stores/toasts.js';
 
 /**
- * Dedicated route for the OAuth redirect. Previously the callback was handled by
- * scrubbing query params on the index page, which raced the rest of the app
- * booting; here the exchange owns its own screen and only navigates on success.
+ * Dedicated route for the OAuth redirect, so the exchange cannot race the rest
+ * of the app booting; it only navigates on success.
  */
-export default {
-  name: 'CallbackView',
-  data: () => ({ error: '' }),
+const router = useRouter();
+const auth = useAuthStore();
+const toasts = useToastStore();
+const error = ref('');
+void RouterLink;
 
-  async created() {
-    try {
-      await handleRedirect();
-      this.$router.replace('/');
-    } catch (error) {
-      this.error = error.message || 'Sign-in failed.';
-    }
-  },
-};
+onMounted(async () => {
+  try {
+    await handleRedirect();
+    auth.refresh();
+    toasts.push({ title: 'Signed in to Spotify', tone: 'success' });
+    router.replace('/');
+  } catch (e) {
+    error.value = e.message || 'Sign-in failed.';
+  }
+});
 </script>
-
-<style lang="scss" scoped>
-.callback {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 6rem 1rem;
-  text-align: center;
-}
-</style>

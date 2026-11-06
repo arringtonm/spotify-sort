@@ -1,0 +1,169 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode: `html.dark` is set before first paint (index.html) and
+   kept in sync by useTheme(). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens. Components only ever use these semantic names, never raw
+ * palette values, so light and dark are a variable swap rather than a second
+ * set of classes everywhere.
+ */
+:root {
+  --bg: oklch(0.985 0.003 270);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.965 0.005 270);
+  --surface-3: oklch(0.93 0.008 270);
+  --border: oklch(0.9 0.008 270);
+  --border-strong: oklch(0.82 0.01 270);
+  --text: oklch(0.2 0.02 270);
+  --muted: oklch(0.47 0.02 270);
+  --subtle: oklch(0.6 0.015 270);
+  --accent: oklch(0.53 0.2 275);
+  --accent-hover: oklch(0.48 0.2 275);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-soft: oklch(0.94 0.04 275);
+  --danger: oklch(0.55 0.2 25);
+  --danger-soft: oklch(0.95 0.03 25);
+  --warn: oklch(0.6 0.14 70);
+  --warn-soft: oklch(0.96 0.04 85);
+  --ok: oklch(0.55 0.13 155);
+  --ring: oklch(0.6 0.2 275 / 0.55);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.06), 0 8px 24px -8px oklch(0 0 0 / 0.12);
+  --overlay: oklch(0.2 0.02 270 / 0.4);
+  color-scheme: light;
+}
+
+.dark {
+  --bg: oklch(0.145 0.008 270);
+  --surface: oklch(0.185 0.01 270);
+  --surface-2: oklch(0.22 0.012 270);
+  --surface-3: oklch(0.27 0.014 270);
+  --border: oklch(0.28 0.012 270);
+  --border-strong: oklch(0.36 0.014 270);
+  --text: oklch(0.96 0.005 270);
+  --muted: oklch(0.72 0.012 270);
+  --subtle: oklch(0.58 0.012 270);
+  --accent: oklch(0.7 0.17 275);
+  --accent-hover: oklch(0.76 0.15 275);
+  --accent-fg: oklch(0.16 0.02 275);
+  --accent-soft: oklch(0.3 0.07 275);
+  --danger: oklch(0.7 0.17 25);
+  --danger-soft: oklch(0.3 0.07 25);
+  --warn: oklch(0.8 0.13 80);
+  --warn-soft: oklch(0.32 0.06 80);
+  --ok: oklch(0.74 0.14 155);
+  --ring: oklch(0.72 0.17 275 / 0.6);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 12px 32px -8px oklch(0 0 0 / 0.6);
+  --overlay: oklch(0.05 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ring: var(--ring);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --shadow-pop: var(--shadow);
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    min-height: 100dvh;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Visible keyboard focus everywhere, never on mouse click. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sheet and dialog motion; disabled for people who ask for less. */
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+}
+@keyframes slide-down {
+  to { transform: translateY(100%); }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+}
+@keyframes slide-out-right {
+  to { transform: translateX(100%); }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+}
+
+.anim-overlay[data-state='open'] { animation: fade-in 160ms ease-out; }
+.anim-overlay[data-state='closed'] { animation: fade-out 120ms ease-in; }
+.anim-bottom[data-state='open'] { animation: slide-up 220ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+.anim-bottom[data-state='closed'] { animation: slide-down 160ms ease-in; }
+.anim-right[data-state='open'] { animation: slide-in-right 220ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+.anim-right[data-state='closed'] { animation: slide-out-right 160ms ease-in; }
+.anim-center[data-state='open'] { animation: pop-in 160ms ease-out; }
+.anim-center[data-state='closed'] { animation: fade-out 120ms ease-in; }
+.anim-pop[data-state='open'] { animation: fade-in 120ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Layout metrics shared by sticky elements. --player-h is set at runtime. */
+:root {
+  --header-h: calc(3.5rem + env(safe-area-inset-top));
+  --toolbar-h: 4rem;
+  --player-h: 0px;
+}
+@media (min-width: 640px) {
+  :root {
+    --header-h: calc(4rem + env(safe-area-inset-top));
+  }
+}

@@ -126,3 +126,34 @@ test('tempoBounds ignores null and non-finite tempos', () => {
   assert.deepEqual(tempoBounds([{ tempo: null }]), { min: 0, max: 0 });
   assert.deepEqual(tempoBounds([]), { min: 0, max: 0 });
 });
+
+test('matchMultiples keeps half- and double-time tracks in range', async () => {
+  const { filterTracks, allPitchModes, PITCHES } = await import('../src/lib/tracks.js');
+  const tracks = [
+    { id: 'a', artist: 'A', title: 'x', tempo: 64, key: 'C', mode: 'maj' },
+    { id: 'b', artist: 'B', title: 'y', tempo: 250, key: 'C', mode: 'maj' },
+    { id: 'c', artist: 'C', title: 'z', tempo: 126, key: 'C', mode: 'maj' },
+  ];
+  const base = { selectedPitches: PITCHES, selectedPitchModes: allPitchModes(), tempoRange: [124, 130], query: '' };
+  assert.deepEqual(filterTracks(tracks, base).map((t) => t.id), ['c']);
+  assert.deepEqual(
+    filterTracks(tracks, { ...base, matchMultiples: true }).map((t) => t.id),
+    ['a', 'b', 'c']
+  );
+});
+
+test('search reaches album and genre', async () => {
+  const { matchesQuery } = await import('../src/lib/tracks.js');
+  const track = { artist: 'X', title: 'Y', album: 'Night Lines', genres: ['deep house'] };
+  assert.ok(matchesQuery(track, 'night'));
+  assert.ok(matchesQuery(track, 'deep'));
+  assert.ok(!matchesQuery(track, 'techno'));
+});
+
+test('sortTracks sinks unknown values whichever direction', async () => {
+  const { sortTracks } = await import('../src/lib/tracks.js');
+  const tracks = [{ id: 1, tempo: null }, { id: 2, tempo: 120 }, { id: 3, tempo: 90 }];
+  assert.deepEqual(sortTracks(tracks, { key: 'tempo' }).map((t) => t.id), [3, 2, 1]);
+  assert.deepEqual(sortTracks(tracks, { key: 'tempo', direction: 'desc' }).map((t) => t.id), [2, 3, 1]);
+  assert.equal(tracks[0].id, 1, 'does not mutate');
+});

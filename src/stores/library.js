@@ -28,6 +28,7 @@ import {
 } from '../services/analysisQueue.js';
 import { downloadCsv } from '../lib/exportFormats.js';
 import { useOverridesStore } from './overrides.js';
+import { useAuthStore } from './auth.js';
 
 /** The 2022 snapshot: signed-out demo, test fixture, and analyser validation set. */
 const DEMO = demoTracks.map((t) => ({
@@ -62,6 +63,14 @@ export const useLibraryStore = defineStore('library', {
       return state.raw.map((track) => overrides.apply(track));
     },
     isDemo: (state) => state.origin === 'demo',
+    originLabel: (state) =>
+      ({
+        demo: 'Sample library',
+        spotify: 'Spotify',
+        rekordbox: 'Rekordbox',
+        traktor: 'Traktor',
+        csv: 'CSV import',
+      })[state.origin] ?? state.origin,
     total: (state) => state.raw.length,
     /** Work still outstanding — drives the Resume affordance. */
     pendingCount: (state) => state.counts.pending,
@@ -129,6 +138,8 @@ export const useLibraryStore = defineStore('library', {
         return await run();
       } catch (error) {
         this.error = error.message || String(error);
+        // A dead refresh token means every Spotify control would now fail.
+        if (error?.name === 'ReauthRequired') useAuthStore().refresh();
         throw error;
       } finally {
         this.busy = false;
@@ -288,14 +299,24 @@ export const useLibraryStore = defineStore('library', {
       });
     },
 
-    /** DJ collections carry their own analysis, so they skip the queue entirely. */
-    async importFromFile(file) {
-      return this.withBusy(async () => {
-        const text = await file.text();
-        const { parseDjLibrary } = await import('../lib/djLibrary.js');
-        const { format, tracks } = parseDjLibrary(text, file.name);
-        if (!tracks.length) throw new Error(`No tracks found in that ${format} file.`);
+    /**
+     * Parse a DJ library file without importing it, so the user can see what it
+     * contains before committing — the same "look, then import" shape as the
+     * Spotify path.
+     */
+    async previewFile(file) {
+      const text = await file.text();
+      const { parseDjLibrary } = await import('../lib/djLibrary.js');
+      const { format, tracks } = parseDjLibrary(text, file.name);
+      if (!tracks.length) throw new Error(`No tracks found in that ${format} file.`);
+      const withTempo = tracks.filter((t) => t.tempo != null).length;
+      const withKey = tracks.filter((t) => t.key != null).length;
+      return { format, tracks, withTempo, withKey, name: file.name };
+    },
 
+    /** DJ collections carry their own analysis, so they skip the queue entirely. */
+    async importParsed({ format, tracks }) {
+      return this.withBusy(async () => {
         const merge = await putTracks(
           tracks.map((t) => ({ ...t, analysisState: t.tempo == null ? PENDING : 'done' }))
         );
@@ -309,6 +330,10 @@ export const useLibraryStore = defineStore('library', {
           'Tempo and key come from your DJ software, so they are trusted as-is.';
         return this.raw;
       });
+    },
+
+    async importFromFile(file) {
+      return this.importParsed(await this.previewFile(file));
     },
 
     listPlaylists() {

@@ -1,10 +1,10 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import vuetify from 'vite-plugin-vuetify';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  plugins: [vue(), vuetify({ autoImport: true })],
+  plugins: [vue(), tailwindcss()],
   // Relative base so the build can be dropped on any static host.
   base: './',
   resolve: {

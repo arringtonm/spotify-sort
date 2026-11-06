@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia';
-import { PITCHES, allPitchModes, tempoBounds, filterTracks } from '../lib/tracks.js';
+import {
+  PITCHES,
+  tempoBounds,
+  filterTracks,
+  normaliseQuery,
+  matchesQuery,
+  sortTracks,
+} from '../lib/tracks.js';
 import {
   compatibleTracks,
   buildSet,
@@ -8,23 +15,37 @@ import {
   fromCamelotCode,
 } from '../lib/camelot.js';
 import { displayName } from '../lib/musicalKey.js';
+import { camelotRank, codeFor } from '../lib/trackInfo.js';
 import { useLibraryStore } from './library.js';
+
+export const SORT_FIELDS = [
+  { key: 'artist', label: 'Artist' },
+  { key: 'title', label: 'Title' },
+  { key: 'tempo', label: 'Tempo' },
+  { key: 'camelot', label: 'Key' },
+  { key: 'durationMs', label: 'Length' },
+];
+
+const RANKS = { camelot: camelotRank };
 
 export const useFiltersStore = defineStore('filters', {
   state: () => ({
     // Camelot is the source of truth for key selection. DJs read 8A, not
-    // "A minor", and one wheel position replaces a pitch checkbox plus a
-    // mode checkbox — 24 controls become 24 single-click chips.
+    // "A minor", and one wheel position replaces a pitch plus a mode control.
     selectedCodes: [...ALL_CAMELOT_CODES],
     tempoRange: [90, 130],
+    matchMultiples: false,
+    includeUnknown: true,
     query: '',
-    genre: null,
+    genres: [],
     seedTrack: null,
     // Genre-dependent: 3 suits house, wider suits open-format sets.
     bpmTolerance: 3,
     setLength: 10,
     setDirection: 1,
     setMode: false,
+    sort: { key: 'artist', direction: 'asc' },
+    sortBeforeSeed: null,
   }),
 
   getters: {
@@ -61,6 +82,9 @@ export const useFiltersStore = defineStore('filters', {
     bpmMax() {
       return this.bounds.max || 220;
     },
+    tempoActive() {
+      return this.tempoRange[0] > this.bpmMin || this.tempoRange[1] < this.bpmMax;
+    },
 
     genreOptions() {
       const library = useLibraryStore();
@@ -70,7 +94,7 @@ export const useFiltersStore = defineStore('filters', {
       );
       return [...counts.entries()]
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .map(([title, n]) => ({ title: `${title} (${n})`, value: title }));
+        .map(([value, count]) => ({ value, count }));
     },
 
     /** Low-confidence analysed keys are excluded from any mixing decision. */
@@ -81,20 +105,34 @@ export const useFiltersStore = defineStore('filters', {
       );
     },
 
+    /** Genre narrows every mode, including set building. */
+    genrePool() {
+      return (pool) =>
+        this.genres.length
+          ? pool.filter((t) => (t.genres || []).some((g) => this.genres.includes(g)))
+          : pool;
+    },
+
     setPath() {
       if (!this.seedTrack || !this.setMode) return [];
-      return buildSet(this.trustworthy, this.seedTrack, {
+      return buildSet(this.genrePool(this.trustworthy), this.seedTrack, {
         length: this.setLength,
         bpmTolerance: this.bpmTolerance,
         direction: this.setDirection,
       });
     },
 
+    /** True when rows are a sequence whose order is the point. */
+    ordered() {
+      return Boolean(this.seedTrack && this.setMode);
+    },
+
     rows() {
       const library = useLibraryStore();
 
-      if (this.seedTrack && this.setMode) {
-        // Position is what makes a set a set — the table must preserve play order.
+      if (this.ordered) {
+        // Search would punch holes in a chain where each step mixes into the next,
+        // so a built set ignores it — and the UI says so.
         return this.setPath.map((step, index) => ({
           ...step.track,
           relation: step.relation,
@@ -102,37 +140,75 @@ export const useFiltersStore = defineStore('filters', {
         }));
       }
 
-      let pool = library.tracks;
       if (this.seedTrack) {
-        pool = compatibleTracks(this.trustworthy, this.seedTrack, {
-          bpmTolerance: this.bpmTolerance,
-        }).map((track) => ({
-          ...track,
-          relation: tempoRelation(this.seedTrack.tempo, track.tempo, this.bpmTolerance),
-        }));
-      }
-      if (this.genre) {
-        pool = pool.filter((t) => (t.genres || []).includes(this.genre));
+        // Compatibility already ranks by tempo distance; keep that order unless the
+        // user picks another sort.
+        const term = normaliseQuery(this.query);
+        const matches = this.genrePool(
+          compatibleTracks(this.trustworthy, this.seedTrack, { bpmTolerance: this.bpmTolerance })
+        )
+          .filter((t) => matchesQuery(t, term))
+          .map((track) => ({
+            ...track,
+            relation: tempoRelation(this.seedTrack.tempo, track.tempo, this.bpmTolerance),
+          }));
+        return this.sort.key === 'match'
+          ? matches
+          : sortTracks(matches, { ...this.sort, rank: RANKS[this.sort.key] });
       }
 
-      // With a seed active the Camelot wheel decides the keys, so the key
-      // checkboxes and BPM slider step aside; only search still narrows.
-      return this.seedTrack
-        ? filterTracks(pool, {
-            selectedPitches: PITCHES,
-            selectedPitchModes: allPitchModes(),
-            tempoRange: [this.bpmMin, this.bpmMax],
-            query: this.query,
-          })
-        : filterTracks(pool, {
-            selectedPitches: this.selectedPitches,
-            selectedPitchModes: this.selectedPitchModes,
-            tempoRange: this.tempoRange,
-            query: this.query,
-          });
+      const filtered = filterTracks(this.genrePool(library.tracks), {
+        selectedPitches: this.selectedPitches,
+        selectedPitchModes: this.selectedPitchModes,
+        tempoRange: this.tempoRange,
+        query: this.query,
+        includeUnknown: this.includeUnknown,
+        matchMultiples: this.matchMultiples,
+      });
+      return sortTracks(filtered, {
+        key: this.sort.key,
+        direction: this.sort.direction,
+        rank: RANKS[this.sort.key],
+      });
     },
 
-    /** One pass for all three tallies — this used to walk the library three times. */
+    /**
+     * Every active narrowing as a removable chip. Showing what is applied is the
+     * single biggest fix for "why are only 12 tracks showing?".
+     */
+    appliedFilters() {
+      const chips = [];
+      if (this.seedTrack) return chips; // seed mode has its own card
+      if (this.query) chips.push({ id: 'query', label: `“${this.query}”` });
+      if (!this.allKeysSelected) {
+        const codes = ALL_CAMELOT_CODES.filter((c) => this.selectedCodes.includes(c)).sort(
+          (a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b)
+        );
+        chips.push({
+          id: 'keys',
+          label: codes.length === 0
+            ? 'No keys'
+            : codes.length <= 4
+              ? codes.join(', ')
+              : `${codes.length} keys`,
+        });
+      }
+      if (this.tempoActive) {
+        chips.push({
+          id: 'tempo',
+          label: `${this.tempoRange[0]}–${this.tempoRange[1]} BPM${this.matchMultiples ? ' (+½×/2×)' : ''}`,
+        });
+      }
+      this.genres.forEach((g) => chips.push({ id: `genre:${g}`, label: g }));
+      if (!this.includeUnknown) chips.push({ id: 'unknown', label: 'Hide unanalysed' });
+      return chips;
+    },
+
+    activeFilterCount() {
+      return this.appliedFilters.length;
+    },
+
+    /** One pass for all three tallies. */
     counts() {
       const library = useLibraryStore();
       let unknown = 0;
@@ -156,13 +232,22 @@ export const useFiltersStore = defineStore('filters', {
     uncertainCount() {
       return this.counts.uncertain;
     },
+    seedCode() {
+      return this.seedTrack ? codeFor(this.seedTrack) : null;
+    },
   },
 
   actions: {
     seed(track) {
+      // Compatible tracks arrive ranked by closeness; show that ranking first and
+      // put the library sort back afterwards.
+      if (!this.seedTrack) this.sortBeforeSeed = this.sort;
       this.seedTrack = track;
+      this.sort = { key: 'match', direction: 'asc' };
     },
     clearSeed() {
+      if (this.seedTrack && this.sortBeforeSeed) this.sort = this.sortBeforeSeed;
+      this.sortBeforeSeed = null;
       this.seedTrack = null;
       this.setMode = false;
     },
@@ -170,13 +255,42 @@ export const useFiltersStore = defineStore('filters', {
       this.resetAll();
     },
 
-    /** Back to "show everything". */
+    /** Back to "show everything". Sort is a view preference, so it stays. */
     resetAll() {
       this.tempoRange = [this.bpmMin, this.bpmMax];
       this.clearSeed();
-      this.genre = null;
+      this.genres = [];
       this.query = '';
       this.selectedCodes = [...ALL_CAMELOT_CODES];
+      this.matchMultiples = false;
+      this.includeUnknown = true;
+    },
+
+    removeFilter(id) {
+      if (id === 'query') this.query = '';
+      else if (id === 'keys') this.selectAllKeys();
+      else if (id === 'tempo') {
+        this.tempoRange = [this.bpmMin, this.bpmMax];
+        this.matchMultiples = false;
+      } else if (id === 'unknown') this.includeUnknown = true;
+      else if (id.startsWith('genre:')) {
+        const genre = id.slice('genre:'.length);
+        this.genres = this.genres.filter((g) => g !== genre);
+      }
+    },
+
+    toggleGenre(genre) {
+      this.genres = this.genres.includes(genre)
+        ? this.genres.filter((g) => g !== genre)
+        : [...this.genres, genre];
+    },
+
+    setSort(key, direction) {
+      const same = this.sort.key === key;
+      this.sort = {
+        key,
+        direction: direction ?? (same && this.sort.direction === 'asc' ? 'desc' : 'asc'),
+      };
     },
 
     toggleCode(code) {
@@ -193,7 +307,7 @@ export const useFiltersStore = defineStore('filters', {
       this.selectedCodes = [];
     },
 
-    /** Select the seed's key and its harmonic neighbours — the usual starting point. */
+    /** Select a key and its harmonic neighbours — the usual starting point. */
     selectCompatibleWith(code) {
       const parsed = fromCamelotCode(code);
       if (!parsed) return;
