@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Serato often points at songs kept in the Music app's folder
+       (~/Music/Music/Media.localized), which macOS guards. This is the text of
+       the permission prompt that lets the app read them for playback and
+       analysis. -->
+  <key>NSAppleMusicUsageDescription</key>
+  <string>Spotify Sort reads songs in your Music folder that your Serato library points to, to play them and measure tempo, key and energy.</string>
+</dict>
+</plist>
