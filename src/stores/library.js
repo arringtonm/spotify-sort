@@ -125,6 +125,7 @@ export const useLibraryStore = defineStore('library', {
         files: 'Audio files',
         serato: 'Serato',
         backup: 'Backup',
+        music: 'Music library',
       })[state.origin] ?? state.origin,
     total: (state) => state.raw.length,
     /** Work still outstanding — drives the Resume affordance. */
@@ -757,6 +758,19 @@ export const useLibraryStore = defineStore('library', {
           (missingAnalysis ? ` ${missingAnalysis} have no BPM or key in Serato yet.` : '');
         return this.raw;
       });
+    },
+
+    /** The Music app's exported Library.xml (desktop app / dev). */
+    async importMusicLibrary() {
+      try {
+        const { readMusicLibrary } = await import('../services/localLibraries.js');
+        const { parseMusicLibrary } = await import('../lib/musicLibrary.js');
+        const tracks = parseMusicLibrary(await readMusicLibrary());
+        if (!tracks.length) throw new Error('No songs in the Music library file.');
+        return this.importParsed({ format: 'music', tracks, name: 'Music library' });
+      } catch (error) {
+        useToastStore().push({ title: 'Couldn’t import the Music library', description: error.message, tone: 'error' });
+      }
     },
 
     /**
