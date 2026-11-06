@@ -116,6 +116,15 @@ watch(
   (d) => {
     name.value = d?.name ?? '';
     submitted.value = false;
+    // Focus the name with it selected, so typing replaces the suggestion and
+    // Enter accepts it. (Wait for the dialog's own focus handling to finish.)
+    if (d) {
+      setTimeout(() => {
+        const input = document.querySelector('#crate-form input');
+        input?.focus();
+        input?.select();
+      }, 50);
+    }
   }
 );
 
@@ -141,8 +150,8 @@ function submit() {
   } else {
     const crate = crates.create(name.value, d.trackIds ?? []);
     if (d.openAfter) crates.open(crate.id);
-    else if (crate.trackIds.length) addedToast(crate, crate.trackIds.length, crate.trackIds.length);
-    else toasts.push({ title: `Created ${crate.name}`, tone: 'success' });
+    else if (crate.trackIds.length) addedToast(crate, crate.trackIds.length);
+    else toasts.push({ title: `Created ${crate.name}`, tone: 'success', duration: 2500 });
   }
   crates.dialog = null;
 }

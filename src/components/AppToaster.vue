@@ -5,17 +5,24 @@
       :key="toast.id"
       :duration="toast.duration"
       :type="toast.tone === 'error' ? 'foreground' : 'background'"
-      class="anim-pop pointer-events-auto flex w-full items-start gap-3 rounded-xl border border-border bg-surface p-3.5 pr-2 shadow-pop data-[swipe=end]:translate-y-[var(--reka-toast-swipe-end-y)] data-[swipe=move]:translate-y-[var(--reka-toast-swipe-move-y)]"
+      :class="compact(toast) ? 'items-center gap-2 py-1.5 pl-3 pr-1' : 'items-start gap-3 p-3.5 pr-2'"
+      class="anim-pop pointer-events-auto flex w-full rounded-xl border border-border bg-surface shadow-pop data-[swipe=end]:translate-y-[var(--reka-toast-swipe-end-y)] data-[swipe=move]:translate-y-[var(--reka-toast-swipe-move-y)]"
       @update:open="(open) => !open && toasts.dismiss(toast.id)"
     >
       <component
         :is="icons[toast.tone] ?? Info"
-        class="mt-0.5 size-5 shrink-0"
-        :class="tones[toast.tone] ?? 'text-accent'"
+        class="shrink-0"
+        :class="[tones[toast.tone] ?? 'text-accent', compact(toast) ? 'size-4' : 'mt-0.5 size-5']"
         aria-hidden="true"
       />
-      <div class="min-w-0 flex-1">
-        <ToastTitle class="text-sm font-medium">
+      <div
+        class="min-w-0 flex-1"
+        :class="compact(toast) && 'flex items-center gap-2'"
+      >
+        <ToastTitle
+          class="text-sm font-medium"
+          :class="compact(toast) && 'min-w-0 flex-1 truncate'"
+        >
           {{ toast.title }}
         </ToastTitle>
         <ToastDescription
@@ -30,9 +37,9 @@
           as-child
         >
           <Button
-            variant="outline"
+            :variant="compact(toast) ? 'ghost' : 'outline'"
             size="sm"
-            class="mt-2"
+            :class="compact(toast) ? 'shrink-0 text-accent' : 'mt-2'"
             @click="toast.action.run()"
           >
             {{ toast.action.label }}
@@ -72,4 +79,6 @@ import { useToastStore } from '@/stores/toasts.js';
 const toasts = useToastStore();
 const icons = { success: CircleCheck, error: CircleAlert, warning: TriangleAlert };
 const tones = { success: 'text-ok', error: 'text-danger', warning: 'text-warn' };
+/** Title-only toasts (quick confirmations like "Added to Peak time") get one small line. */
+const compact = (toast) => !toast.description && toast.tone !== 'error';
 </script>

@@ -69,16 +69,13 @@ export function useTrackDrag() {
     return true;
   }
 
-  function addedToast(crate, added, total) {
+  /** Quick, one-line confirmation; it goes away on its own. */
+  function addedToast(crate, added) {
     toasts.push({
       title: added ? `Added to ${crate.name}` : `Already in ${crate.name}`,
-      description: added
-        ? `${crate.trackIds.length} ${crate.trackIds.length === 1 ? 'track' : 'tracks'} in this crate.`
-        : total === 1
-          ? 'That track is already in this crate.'
-          : 'Those tracks are already in this crate.',
       tone: added ? 'success' : 'info',
-      action: crates.activeId === crate.id ? null : { label: 'View crate', run: () => crates.open(crate.id) },
+      duration: 2500,
+      action: crates.activeId === crate.id ? null : { label: 'View', run: () => crates.open(crate.id) },
     });
   }
 
@@ -89,7 +86,7 @@ export function useTrackDrag() {
     const crate = crates.byId(crateId);
     if (!data?.ids?.length || !crate) return;
     const added = crates.add(crateId, data.ids);
-    addedToast(crate, added, data.ids.length);
+    addedToast(crate, added);
   }
 
   function dropOnNew(event) {

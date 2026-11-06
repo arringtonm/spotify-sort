@@ -154,8 +154,8 @@ function toggleCrate(crate) {
   const added = crates.toggle(crate.id, props.track.id);
   toasts.push({
     title: added ? `Added to ${crate.name}` : `Removed from ${crate.name}`,
-    description: `${props.track.artist} – ${props.track.title}`,
     tone: added ? 'success' : 'info',
+    duration: 2500,
   });
 }
 
@@ -169,7 +169,7 @@ function removeFromCrate() {
   crates.removeTracks(crate.id, [props.track.id]);
   toasts.push({
     title: `Removed from ${crate.name}`,
-    description: `${props.track.artist} – ${props.track.title}`,
+    duration: 5000,
     action: { label: 'Undo', run: () => undoRemove(crate.id, props.track.id, props.track.position - 1) },
   });
 }
