@@ -35,7 +35,7 @@ const toasts = useToastStore();
 
 // Sticky/fixed elements need to clear the player bar when it is showing.
 watchEffect(() => {
-  document.documentElement.style.setProperty('--player-h', player.track ? '64px' : '0px');
+  document.documentElement.style.setProperty('--player-h', player.track ? (window.matchMedia('(min-width: 640px)').matches ? '64px' : '108px') : '0px');
 });
 
 // Links handed over via /import (share target) arrive as ?link=.

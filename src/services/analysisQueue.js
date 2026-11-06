@@ -1,5 +1,5 @@
 import { analyseTrack, applyEnrichment, releaseAnalysisWorkers, putEntry, getMany } from './enrich.js';
-import { patchTracks, PENDING, DONE, FAILED, UNAVAILABLE, MAX_ATTEMPTS } from './db.js';
+import { patchTracks, putWaveform, PENDING, DONE, FAILED, UNAVAILABLE, MAX_ATTEMPTS } from './db.js';
 
 /**
  * Resumable analysis.
@@ -96,6 +96,9 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
           if (!entry) {
             try {
               entry = await analyseTrack(track);
+              const { waveform, ...rest } = entry;
+              entry = rest;
+              if (waveform) await putWaveform(track.id, waveform).catch(() => {});
               if (CACHEABLE.has(entry.status)) await putEntry(entry).catch(() => {});
             } catch (error) {
               entry = { id: track.id, status: 'failed', error: String(error?.message || error) };

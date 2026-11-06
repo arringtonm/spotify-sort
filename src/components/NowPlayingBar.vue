@@ -37,20 +37,15 @@
         <div class="hidden min-w-0 flex-1 items-center gap-3 sm:flex">
           <span class="w-10 text-right font-mono text-xs text-muted tabular">{{ clock(player.currentTime) }}</span>
           <div class="min-w-0 flex-1">
-            <slot
-              name="scrubber"
-              :track="track"
-            >
-              <RangeSlider
-                :model-value="[player.currentTime]"
-                :min="0"
-                :max="player.duration || 30"
-                :step="0.1"
-                :thumb-labels="['Playback position']"
-                :disabled="!player.duration"
-                @update:model-value="player.seek($event[0])"
-              />
-            </slot>
+            <WaveformCanvas
+              :waveform="player.waveform"
+              :loading="player.waveformLoading"
+              :progress="player.progress"
+              :duration="player.duration || 30"
+              :height="44"
+              interactive
+              @seek="(f) => player.seek(f * (player.duration || 30))"
+            />
           </div>
           <span class="w-10 font-mono text-xs text-muted tabular">{{ clock(player.duration) }}</span>
         </div>
@@ -99,14 +94,16 @@
           </Button>
         </div>
       </div>
-      <!-- Thin progress line on phones, where the scrubber is hidden. -->
-      <div
-        class="h-0.5 bg-surface-3 sm:hidden"
-        aria-hidden="true"
-      >
-        <div
-          class="h-full bg-accent"
-          :style="{ width: `${player.progress * 100}%` }"
+      <!-- Phones: the waveform gets its own full-width row under the controls. -->
+      <div class="px-3 pb-2 sm:hidden">
+        <WaveformCanvas
+          :waveform="player.waveform"
+          :loading="player.waveformLoading"
+          :progress="player.progress"
+          :duration="player.duration || 30"
+          :height="36"
+          interactive
+          @seek="(f) => player.seek(f * (player.duration || 30))"
         />
       </div>
     </div>
@@ -117,7 +114,7 @@
 import { computed } from 'vue';
 import { Play, Pause, X, Disc3, Shuffle } from '@lucide/vue';
 import Button from './ui/Button.vue';
-import RangeSlider from './ui/RangeSlider.vue';
+import WaveformCanvas from './WaveformCanvas.vue';
 import KeyBadge from './KeyBadge.vue';
 import { usePlayerStore } from '@/stores/player.js';
 import { useFiltersStore } from '@/stores/filters.js';

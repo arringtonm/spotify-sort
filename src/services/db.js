@@ -16,15 +16,17 @@ import { ANALYZER_VERSION } from '../lib/analyzeAudio.js';
  *               track removed and later re-imported is not re-analysed.
  *   overrides   manual corrections. Outrank everything; never invalidated.
  *   meta        library-level bookkeeping (origin, last import).
+ *   waveforms   3-band waveform per track (binary, ~18 KB each), keyed by id.
  */
 
 const DB_NAME = 'spotify-sort';
-const VERSION = 4;
+const VERSION = 5;
 
 export const TRACKS = 'tracks';
 export const ENRICHMENT = 'enrichment';
 export const OVERRIDES = 'overrides';
 export const META = 'meta';
+export const WAVEFORMS = 'waveforms';
 
 /** Analysis lifecycle for a single track. */
 export const PENDING = 'pending';
@@ -53,7 +55,7 @@ function open() {
 
     request.onupgradeneeded = (event) => {
       const db = request.result;
-      for (const name of [ENRICHMENT, OVERRIDES]) {
+      for (const name of [ENRICHMENT, OVERRIDES, WAVEFORMS]) {
         if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'key' });
@@ -255,3 +257,24 @@ export const setMeta = (key, value) =>
   run(META, 'readwrite', (store) => store.put(toPlain({ key, ...value })));
 
 export const getMeta = (key) => run(META, 'readonly', (store) => store.get(key));
+
+// ---------------------------------------------------------------- waveforms
+
+/**
+ * Waveforms are binary (Uint8Array), so they bypass toPlain(): a JSON round trip
+ * would turn the array into an object of 18,000 numbered keys. The record is
+ * built from plain values here, so there is no reactive proxy to strip.
+ */
+export const putWaveform = (id, waveform) =>
+  run(WAVEFORMS, 'readwrite', (store) =>
+    store.put({
+      id,
+      version: waveform.version,
+      binsPerSecond: waveform.binsPerSecond,
+      bins: waveform.bins,
+      duration: waveform.duration,
+      data: waveform.data,
+    })
+  );
+
+export const getWaveform = (id) => run(WAVEFORMS, 'readonly', (store) => store.get(id));

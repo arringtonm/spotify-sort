@@ -45,17 +45,36 @@ function getAudioContext() {
   return audioContext;
 }
 
-/** Fetch a preview and decode it. Web Audio is main-thread only. */
-async function decodePreview(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`preview HTTP ${response.status}`);
-  const buffer = await getAudioContext().decodeAudioData(await response.arrayBuffer());
+/** Decode compressed audio into transferable per-channel PCM. */
+export async function decodeAudio(bytes) {
+  const buffer = await getAudioContext().decodeAudioData(bytes);
   const channels = [];
   for (let c = 0; c < buffer.numberOfChannels; c += 1) {
     // Copy: the underlying AudioBuffer memory cannot be transferred directly.
     channels.push(new Float32Array(buffer.getChannelData(c)));
   }
   return { channels, length: buffer.length, sampleRate: buffer.sampleRate };
+}
+
+/** Fetch a preview and decode it. Web Audio is main-thread only. */
+async function decodePreview(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`preview HTTP ${response.status}`);
+  return decodeAudio(await response.arrayBuffer());
+}
+
+let waveformPool = null;
+
+/** Waveform for already-decoded audio, computed off the main thread. */
+export function waveformInWorker({ channels, length, sampleRate }) {
+  if (!waveformPool) {
+    waveformPool = createWorkerPool(
+      () => new Worker(new URL('./waveform.worker.js', import.meta.url), { type: 'module' }),
+      { size: 1 }
+    );
+  }
+  const buffers = channels.map((c) => c.buffer);
+  return waveformPool.submit({ channels: buffers, length, sampleRate }, buffers);
 }
 
 export async function analyseTrack(track) {
@@ -91,6 +110,9 @@ export async function analyseTrack(track) {
       keyStrength: analysis.keyStrength,
       keyConfident: analysis.keyConfident,
       keySource: 'analysis',
+      // Carried out of band: the queue stores it separately (binary), never in
+      // the JSON enrichment cache.
+      waveform: analysis.waveform ?? null,
     };
   } catch (error) {
     return match.bpm

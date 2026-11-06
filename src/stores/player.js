@@ -1,5 +1,9 @@
 import { defineStore } from 'pinia';
+import { markRaw } from 'vue';
 import { getPreviewUrl, resolve as resolveDeezer } from '../services/deezer.js';
+import { getWaveform, putWaveform } from '../services/db.js';
+import { decodeAudio, waveformInWorker } from '../services/enrich.js';
+import { WAVEFORM_VERSION } from '../lib/waveform.js';
 
 /**
  * 30-second preview playback.
@@ -10,6 +14,13 @@ import { getPreviewUrl, resolve as resolveDeezer } from '../services/deezer.js';
  * press time rather than cached.
  */
 let audio = null;
+let objectUrl = null;
+
+/** Stored waveform for a track, if it was made by the current algorithm. */
+async function cachedWaveform(id) {
+  const stored = await getWaveform(id).catch(() => null);
+  return stored?.version === WAVEFORM_VERSION ? stored : null;
+}
 
 export const usePlayerStore = defineStore('player', {
   state: () => ({
@@ -20,6 +31,9 @@ export const usePlayerStore = defineStore('player', {
     currentTime: 0,
     duration: 0,
     error: '',
+    // markRaw: an 18 KB typed array has no business being deeply reactive.
+    waveform: null,
+    waveformLoading: false,
   }),
 
   getters: {
@@ -100,6 +114,7 @@ export const usePlayerStore = defineStore('player', {
       this.track = null;
       this.currentTime = 0;
       this.duration = 0;
+      this.waveform = null;
     },
 
     seek(seconds) {
@@ -107,6 +122,21 @@ export const usePlayerStore = defineStore('player', {
       if (!Number.isFinite(seconds)) return;
       player.currentTime = Math.max(0, Math.min(seconds, this.duration || seconds));
       this.currentTime = player.currentTime;
+    },
+
+    /** Decode and draw a waveform for a track that doesn't have one stored. */
+    async buildWaveform(id, bytes) {
+      this.waveformLoading = true;
+      try {
+        const pcm = await decodeAudio(bytes);
+        const waveform = await waveformInWorker(pcm);
+        await putWaveform(id, waveform).catch(() => {});
+        if (this.track?.id === id) this.waveform = markRaw({ id, ...waveform });
+      } catch {
+        /* no waveform; the bar falls back to a plain progress line */
+      } finally {
+        this.waveformLoading = false;
+      }
     },
 
     async toggle(track) {
@@ -124,6 +154,7 @@ export const usePlayerStore = defineStore('player', {
       this.currentId = null;
       this.currentTime = 0;
       this.duration = 0;
+      this.waveform = null;
       this.loadingId = track.id;
       try {
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -139,10 +170,35 @@ export const usePlayerStore = defineStore('player', {
         // A later press may have superseded this one while we were resolving.
         if (this.loadingId !== track.id) return;
 
-        player.src = url;
+        const cached = await cachedWaveform(track.id);
+        this.waveform = cached ? markRaw(cached) : null;
+
+        /*
+         * Download once, use twice: the bytes become a Blob for playback (so a
+         * signed URL can't expire mid-listen) and, when no waveform is stored yet,
+         * get decoded for one.
+         */
+        let bytes = null;
+        try {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          bytes = await response.arrayBuffer();
+          if (this.loadingId !== track.id) return;
+          const blob = new Blob([bytes], { type: response.headers.get('content-type') || 'audio/mpeg' });
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          objectUrl = URL.createObjectURL(blob);
+          player.src = objectUrl;
+        } catch {
+          // Fall back to streaming the URL directly; just no waveform this time.
+          bytes = null;
+          player.src = url;
+        }
+
         await player.play();
         this.currentId = track.id;
         this.updateMediaMetadata(track);
+
+        if (!cached && bytes) this.buildWaveform(track.id, bytes);
       } catch (error) {
         if (this.loadingId === track.id) {
           this.error = error?.message || 'Could not play preview.';
