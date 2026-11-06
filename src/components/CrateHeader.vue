@@ -195,7 +195,7 @@ const kindLabel = computed(
 const hint = computed(() => {
   const origin = crate.value?.origin;
   if (origin === 'serato') return 'Synced from Serato. Change it in Serato, then import Serato again.';
-  if (origin === 'mixtape') return 'Everything here is marked as used. Hide used tracks with the Library filter.';
+  if (origin === 'mixtape') return 'Everything here is marked as used. Turn on Repeats → Hide in the filters to keep new mixtapes fresh.';
   if (crates.activeView.isFolder) return 'Shows this crate and everything inside it.';
   return 'Drag rows to reorder, or use ⋯ → Move up / Move down. Filters apply to All tracks.';
 });

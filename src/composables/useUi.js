@@ -8,6 +8,8 @@ const pendingLink = ref('');
 const mixtapeImportOpen = ref(false);
 /** Discover: the tracks to find new music around (null = closed). */
 const discoverSeeds = ref(null);
+/** The crate browser popover (⌘K in the desktop app). */
+const crateBrowserOpen = ref(false);
 
 export function useUi() {
   return {
@@ -15,6 +17,7 @@ export function useUi() {
     pendingLink,
     mixtapeImportOpen,
     discoverSeeds,
+    crateBrowserOpen,
     importLink(text) {
       pendingLink.value = text;
       libraryOpen.value = true;

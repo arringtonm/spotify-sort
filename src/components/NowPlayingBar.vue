@@ -59,9 +59,9 @@
           <Button
             variant="ghost"
             size="sm"
-            class="hidden lg:inline-flex"
+            class="hidden md:inline-flex"
             :disabled="!canSeed(track)"
-            @click="filters.seed(track)"
+            @click="mixFrom(track)"
           >
             <Shuffle /> Mix from this
           </Button>
@@ -112,16 +112,16 @@
 
 <script setup>
 import { computed } from 'vue';
+import { useMix } from '@/composables/useMix.js';
 import { Play, Pause, X, Disc3, Shuffle } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import WaveformCanvas from './WaveformCanvas.vue';
 import KeyBadge from './KeyBadge.vue';
 import { usePlayerStore } from '@/stores/player.js';
-import { useFiltersStore } from '@/stores/filters.js';
 import { formatTempo, canSeed } from '@/lib/trackInfo.js';
 
 const player = usePlayerStore();
-const filters = useFiltersStore();
+const { mixFrom } = useMix();
 const track = computed(() => player.track);
 
 function clock(seconds) {

@@ -32,7 +32,7 @@
           :class="(!filters.activeFilterCount || crates.active) && 'invisible'"
           :aria-hidden="!filters.activeFilterCount || crates.active || undefined"
           :tabindex="filters.activeFilterCount && !crates.active ? undefined : -1"
-          @click="filters.resetAll()"
+          @click="filters.resetFilters()"
         >
           Reset
         </Button>
@@ -63,7 +63,7 @@
             :placeholder="searchPlaceholder"
             aria-label="Search tracks"
             enterkeyhint="search"
-            :disabled="ordered"
+            :disabled="filters.ordered && !crates.active"
             clearable
             clear-label="search"
           />
@@ -72,6 +72,7 @@
           variant="secondary"
           class="relative lg:hidden"
           :disabled="Boolean(crates.active)"
+          :title="crates.active ? 'Filters apply to All tracks' : undefined"
           :aria-label="`Filters${filters.activeFilterCount ? `, ${filters.activeFilterCount} active` : ''}`"
           @click="filtersOpen = true"
         >
@@ -155,8 +156,9 @@
         v-if="rows.length"
         :rows="rows"
         :ordered="ordered"
-        :reorderable="crates.activeEditable"
+        :reorderable="canReorder"
         @reorder="(from, to) => crates.moveVisible(crates.activeId, from, to)"
+        @remove="removeFromCrate"
         @seed="seed"
         @edit="editing = $event"
       />
@@ -204,7 +206,7 @@
           v-if="!filters.seedTrack"
           variant="secondary"
           class="mt-4"
-          @click="filters.resetAll()"
+          @click="filters.resetFilters()"
         >
           Clear all filters
         </Button>
@@ -223,7 +225,7 @@
           variant="ghost"
           :disabled="!filters.activeFilterCount"
           class="mr-auto"
-          @click="filters.resetAll()"
+          @click="filters.resetFilters()"
         >
           Reset
         </Button>
@@ -272,6 +274,10 @@ import DensityToggle from '@/components/DensityToggle.vue';
 import MixtapeImport from '@/components/MixtapeImport.vue';
 import DiscoverSheet from '@/components/DiscoverSheet.vue';
 import { useCratesStore, CRATES_STORAGE_KEY } from '@/stores/crates.js';
+import { useMix } from '@/composables/useMix.js';
+import { useToastStore } from '@/stores/toasts.js';
+import { savePrefs, PREF_FIELDS } from '@/stores/filters.js';
+import { normaliseQuery, matchesQuery } from '@/lib/tracks.js';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';
 import { useOverridesStore } from '@/stores/overrides.js';
@@ -284,8 +290,15 @@ const ui = useUi();
 const crates = useCratesStore();
 
 /** A crate, when open, replaces the library view: its tracks, in its order. */
-const rows = computed(() => (crates.active ? crates.activeView.rows : filters.rows));
+const rows = computed(() => {
+  if (!crates.active) return filters.rows;
+  // Search works inside a crate too (a 300-track Serato crate needs it).
+  const term = normaliseQuery(filters.query);
+  return term ? crates.activeView.rows.filter((t) => matchesQuery(t, term)) : crates.activeView.rows;
+});
 const ordered = computed(() => Boolean(crates.active) || filters.ordered);
+/** Reordering a crate only makes sense when you can see all of it. */
+const canReorder = computed(() => crates.activeEditable && !filters.query);
 const countLabel = computed(() => {
   if (crates.active) return rows.value.length === 1 ? 'track in this crate' : 'tracks in this crate';
   if (filters.ordered) return 'tracks in this set';
@@ -309,6 +322,12 @@ watch(
     if (!library.isDemo) crates.relinkMixtapes(raw);
   }
 );
+// Remember how you like to work (hide used, source, energy, mix settings).
+watch(
+  () => PREF_FIELDS.map((k) => filters[k]),
+  () => savePrefs(filters),
+  { deep: true }
+);
 // Another tab edited crates.
 useEventListener(window, 'storage', (event) => {
   if (event.key === CRATES_STORAGE_KEY) crates.reload();
@@ -317,7 +336,7 @@ useEventListener(window, 'storage', (event) => {
 const filtersOpen = ref(false);
 const roomy = useMediaQuery('(min-width: 640px)');
 const searchPlaceholder = computed(() => {
-  if (crates.active) return roomy.value ? 'Search is off inside a crate' : 'Search off in crates';
+  if (crates.active) return roomy.value ? `Search ${crates.active.name}` : 'Search this crate';
   if (filters.ordered) return roomy.value ? 'Search is off while building a set' : 'Search off in sets';
   return roomy.value ? 'Search artist, title, album, genre' : 'Search tracks';
 });
@@ -374,10 +393,24 @@ function dismissDemo() {
   }
 }
 
-function seed(track) {
-  crates.close();
-  filters.seed(track);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+const { mixFrom: seed } = useMix();
+
+const toasts = useToastStore();
+function removeFromCrate(track) {
+  const crate = crates.active;
+  const index = crate.trackIds.indexOf(track.id);
+  crates.removeTracks(crate.id, [track.id]);
+  toasts.push({
+    title: `Removed from ${crate.name}`,
+    duration: 5000,
+    action: {
+      label: 'Undo',
+      run: () => {
+        crates.add(crate.id, [track.id]);
+        crates.move(crate.id, crate.trackIds.length - 1, index);
+      },
+    },
+  });
 }
 
 onMounted(async () => {
@@ -385,6 +418,8 @@ onMounted(async () => {
   // Load whatever is stored on this device; without this the app fell back to
   // the bundled sample on every reload.
   await library.hydrate();
-  filters.resetAll();
+  // Keys, tempo and search start fresh; remembered preferences (hide used,
+  // source, energy, mix settings) carry over from last time.
+  filters.startSession();
 });
 </script>

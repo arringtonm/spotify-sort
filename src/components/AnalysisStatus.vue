@@ -4,6 +4,10 @@
       <div class="flex items-baseline justify-between text-sm">
         <span class="font-medium">{{ library.busy && library.progress ? library.progress.label : headline }}</span>
       </div>
+      <!-- Reserved line: time left while running, so it never jumps in. -->
+      <p class="mt-0.5 min-h-4 text-xs text-muted tabular">
+        {{ eta }}
+      </p>
       <div
         class="mt-2 h-2 overflow-hidden rounded-full bg-surface-3"
         role="progressbar"
@@ -36,8 +40,8 @@
     </dl>
 
     <p class="text-xs text-muted">
-      Tempo and key are measured from 30-second Deezer previews when your source doesn't
-      provide them. Everything is stored on this device, so you can stop and resume any time.
+      Tempo, key and energy are measured from your own file when Serato has it, otherwise from a
+      30-second preview. Everything is stored on this device, so you can stop and resume any time.
     </p>
 
     <div class="flex flex-wrap gap-2">
@@ -78,12 +82,33 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Play, Square, RotateCcw, Gauge } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import { useLibraryStore } from '@/stores/library.js';
 
 const library = useLibraryStore();
+
+/** Time left, from the rate so far in this run (needs a few tracks to settle). */
+const started = ref(null);
+watch(
+  () => library.progress?.done,
+  (done) => {
+    if (done == null || !library.busy) {
+      started.value = null;
+      return;
+    }
+    if (!started.value || done < started.value.done) started.value = { at: Date.now(), done };
+  }
+);
+const eta = computed(() => {
+  const p = library.progress;
+  const s = started.value;
+  if (!library.busy || !p?.total || !s || p.done - s.done < 5) return library.busy ? 'Working…' : '';
+  const perMs = (p.done - s.done) / (Date.now() - s.at);
+  const minutes = Math.round((p.total - p.done) / perMs / 60000);
+  return minutes < 1 ? 'Less than a minute left' : `About ${minutes} min left`;
+});
 // Tracks analysed before energy existed (or imported with BPM/key already).
 const energyBacklog = computed(() => library.energyBacklog().length);
 

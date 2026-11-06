@@ -5,7 +5,12 @@ and build sets where every track mixes into the next.
 
 Vue 3.5 · Reka UI · Tailwind 4 · Vite 8 · Pinia · Vue Router · vite-plugin-pwa · ESLint 10 · `node:test`
 
-Installable as an app (PWA), works offline for your stored library, dark by default.
+Runs as a **Mac app** (Tauri 2, native menus, reads your Serato library directly), as an
+installable web app (PWA), or in a browser. Dark by default.
+
+Built for one DJ's workflow: find tracks and build mixtapes that are beautiful and sonically
+seamless, across a Spotify library and a whole Serato library, without repeating songs from
+past mixtapes.
 
 ## Quick start
 
@@ -17,10 +22,12 @@ npm run dev               # http://127.0.0.1:5173
 
 | Script | Does |
 |---|---|
+| `npm run desktop` | Mac app in development (Tauri; needs Rust — `brew install rustup`) |
+| `npm run desktop:build` | → `src-tauri/target/release/bundle/macos/Spotify Sort.app` |
 | `npm run dev` | Dev server, binds `127.0.0.1` |
 | `npm run build` | → `dist/` |
 | `npm run preview` | Serve the build |
-| `npm test` | 96 tests, `node:test`, no framework |
+| `npm test` | 129 tests, `node:test`, no framework |
 | `npx pwa-assets-generator` | Regenerate icons from `public/logo.svg` |
 | `npm run lint` / `lint:fix` | ESLint flat config |
 | `node scripts/validate-analyzer.mjs [n]` | Re-measure analyser accuracy |
@@ -46,7 +53,35 @@ playlists:
 If Spotify shows *INVALID_CLIENT: Invalid redirect URI*, step 2 doesn't match; if it says
 the user isn't registered, step 3 is missing.
 
+## The Mac app
+
+`npm run desktop:build` produces an ~8 MB `Spotify Sort.app` (copy it to Applications; the
+first launch needs right-click → Open, since it isn't notarised). It's the same app with:
+
+- **A menu bar**: File → Import Serato Library (⇧⌘S), Import… (⌘I), New Crate (⌘N), Import
+  Past Mixtapes; Edit → Find (⌘F); View → All Tracks (⌘0), Comfortable/Compact rows (⌘1/⌘2),
+  source filters, Reset Filters (⇧⌘R); Mix → Next Track / Build a Set / Stop Mixing (⌘.).
+- **Direct, read-only access to your libraries**: `~/Music/_Serato_` and every drive's
+  `_Serato_`, the Music/iTunes `Library.xml`, and the audio files they point at.
+- **No browser limits**: Spotify playlist pages are read without the proxy.
+- **Its own storage.** Move a browser library in with *Library → Backup → Back up now* in the
+  browser, then *Restore* in the app (a fresh app offers the newest backup automatically).
+  Backups live in `~/Documents/Spotify Sort Backups`.
+- Spotify sign-in opens in its own window and catches the redirect to the registered
+  `http://127.0.0.1:5173/callback`, so nothing else needs registering.
+
+Under `npm run dev` the same Serato / Music / backup reads are served by a 127.0.0.1-only dev
+endpoint (`vite-local-libraries.js`), so everything also works in a browser on this Mac.
+
 ## Where your library can come from
+
+**0. Your Serato library — one click.** *Library → Serato library* (or ⇧⌘S) reads every
+track, BPM, key, genre and crate. Songs you also have on Spotify are **linked, not
+duplicated** (artist + title matching that understands "feat.", "- X Remix" vs "(X Remix)",
+radio/extended/original mix), so a track can be *in both*. Serato analysed the whole file, so
+its BPM and key replace preview estimates. Serato crates appear read-only, nested as in
+Serato, and re-sync on every import. Serato tracks **play from the real file** (full length,
+full waveform) and analyse from two minutes of it rather than a 30s preview.
 
 **1. DJ software — the best source, and no login needed.**
 Rekordbox (`.xml`), Traktor (`.nml`), or CSV (which is how Serato and Mixed In Key export;
@@ -164,6 +199,29 @@ survive re-imports and analyser upgrades.
 - **Import counts are explained.** Rows Spotify counts but that carry no usable track —
   local files, region-unavailable items — are reported rather than silently dropped, and a
   failed page keeps everything fetched so far instead of discarding the import.
+
+## Mixing tools
+
+- **Best match** ranks compatible tracks by tempo fit, the key move (same, relative, ±1), key
+  confidence, shared genre words and energy step, and shows why on each row ("Same key ·
+  Same genre · Energy +1"). *Best match favours* Balance / Key / Tempo / Vibe shifts the weights.
+- **Energy 1–10 and danceability**, measured locally (Spotify's audio features are gone for new
+  apps): onset rate, loudness, tempo and Essentia's danceability, calibrated on a real
+  disco/house library. Column, sort and range filter. Raw values are stored, so the scale can
+  be retuned without re-analysing (`src/lib/energy.js`).
+- **Transitions**: in sets and crates each step is marked smooth / rough / clash, and a crate
+  says how many steps clash.
+- **Find new tracks** (Spotify's playlist *Enhance*, rebuilt): from a track or a crate, pull
+  candidates from Deezer artist radio and similar artists, drop what you already have, measure
+  each preview, and keep only what mixes — best first, plus near misses. Keep to the library,
+  straight into a crate, or find it on Spotify.
+- **Crates**: your own (drag rows in, reorder, export), Serato's (mirrored), and **past
+  mixtapes** — import a spreadsheet (A artist, B song, C mix number on each mix's first row;
+  .xlsx, CSV or pasted). Every song in them is flagged as used (clock icon, "Used in Mix 3")
+  and *Hide tracks used in past mixes* keeps new mixes fresh. Songs not in the library yet stay
+  listed and link up when imported.
+- **Library filter**: All · Spotify · Serato · In both · Not in Serato, with counts. Icons on
+  every row show where a track lives.
 
 ## Waveforms
 
@@ -310,10 +368,17 @@ This is why DJ-software import matters: it has none of these limits.
 - [x] Serato-style 3-band waveforms
 - [x] Full-length analysis of local audio files
 - [x] Mix from uncertain keys, ranked by key risk, with visible confidence
-- [ ] Read Serato's `database V2` directly; mark tracks you already own
-- [ ] Smarter "best match": genre overlap and energy alongside tempo and key
-- [ ] Local energy / danceability from Essentia (Spotify's audio features are gone)
-- [ ] Match imported DJ libraries back to Spotify IDs so both sources merge
+- [x] Mac app (Tauri 2) with native menus
+- [x] Read Serato's `database V2` and crates directly; link to Spotify tracks; play local files
+- [x] Smarter "best match": genre overlap and energy alongside tempo and key
+- [x] Local energy / danceability from Essentia (Spotify's audio features are gone)
+- [x] Past mixtapes as an archive; flag and hide used songs
+- [x] Find new tracks that mix (Deezer radio + similar artists, measured locally)
+- [x] Transition check for sets and crates; library backup/restore
+- [ ] Import the Music/iTunes Library.xml (the desktop app can already read it)
+- [ ] Energy-curve set planner (shape the set, then fit tracks to it)
+- [ ] Similar-sounding search with Essentia embeddings
+- [ ] Serato History sessions as "played" history
 - [ ] Persist named sets between sessions
 - [ ] Mini waveforms in list rows; zoomed, scrolling waveform for full-length files
 - [ ] Read ID3/MP4 tags for local files instead of relying on filenames

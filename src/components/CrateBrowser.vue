@@ -75,9 +75,10 @@ import TextInput from './ui/TextInput.vue';
 import CrateTreeNode from './CrateTreeNode.vue';
 import { floatingPanel } from './ui/menu.js';
 import { useCratesStore } from '@/stores/crates.js';
+import { useUi } from '@/composables/useUi.js';
 
 const crates = useCratesStore();
-const open = ref(false);
+const open = useUi().crateBrowserOpen;
 const query = ref('');
 
 /** The chip row shows your top-level crates; anything else is "in the browser". */

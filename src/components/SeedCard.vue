@@ -61,6 +61,34 @@
       </div>
     </div>
 
+    <!-- The path so far: earlier seeds, newest last; click one to go back to it. -->
+    <nav
+      v-if="filters.seedHistory.length"
+      aria-label="Mix history"
+      class="flex min-w-0 items-center gap-1 text-xs"
+      :class="!sidebar && 'mt-2'"
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        class="-ml-2 h-7 shrink-0 px-2 text-xs"
+        title="Back (⌘[)"
+        @click="filters.back()"
+      >
+        <ArrowLeft /> Back
+      </Button>
+      <span class="min-w-0 truncate text-muted">
+        <template
+          v-for="(t, i) in filters.seedHistory.slice(-3)"
+          :key="t.id"
+        ><span v-if="i"> › </span><button
+          type="button"
+          class="hover:text-text hover:underline"
+          @click="goBackTo(t)"
+        >{{ t.title }}</button></template>
+      </span>
+    </nav>
+
     <!-- Estimated key: one quiet line, not a warning box. -->
     <p
       v-if="seed.keySource === 'analysis'"
@@ -78,6 +106,25 @@
     </p>
 
     <div :class="sidebar ? 'space-y-3' : 'mt-3 flex flex-wrap items-center gap-x-5 gap-y-2'">
+      <div
+        v-if="filters.mixCrate"
+        class="space-y-1.5"
+      >
+        <span
+          v-if="sidebar"
+          class="text-sm text-muted"
+        >Suggest from</span>
+        <Segmented
+          :model-value="filters.mixInCrate ? 'crate' : 'library'"
+          label="Suggest from"
+          :fit="!sidebar"
+          :options="[
+            { value: 'crate', label: filters.mixCrate.name.length > 18 ? 'This crate' : filters.mixCrate.name, icon: FolderOpen },
+            { value: 'library', label: 'Whole library', icon: LibraryIcon },
+          ]"
+          @update:model-value="filters.mixInCrate = $event === 'crate'"
+        />
+      </div>
       <Segmented
         v-model="mode"
         label="Mixing mode"
@@ -156,6 +203,40 @@
       class="flex flex-wrap gap-2"
       :class="!sidebar && 'mt-3'"
     >
+      <!-- Build a mix hop by hop: keep the current track in a crate. -->
+      <DropdownMenuRoot :modal="false">
+        <DropdownMenuTrigger as-child>
+          <Button
+            variant="secondary"
+            size="sm"
+          >
+            <FolderPlus /> Add to crate
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuPortal>
+          <DropdownMenuContent
+            :class="floatingPanel"
+            align="start"
+            :side-offset="4"
+            :collision-padding="12"
+          >
+            <MenuItem
+              v-for="crate in crates.userCrates"
+              :key="crate.id"
+              @select="addSeedTo(crate)"
+            >
+              <Check
+                v-if="crates.membership.get(seed.id)?.has(crate.id)"
+              />
+              <Folder v-else />
+              {{ crate.name }}
+            </MenuItem>
+            <MenuItem @select="crates.requestCreate([seed.id])">
+              <FolderPlus /> New crate…
+            </MenuItem>
+          </DropdownMenuContent>
+        </DropdownMenuPortal>
+      </DropdownMenuRoot>
       <Button
         variant="secondary"
         size="sm"
@@ -187,7 +268,16 @@ import {
   MoveRight,
   FolderPlus,
   Sparkles,
+  ArrowLeft,
+  FolderOpen,
+  Library as LibraryIcon,
+  Check,
+  Folder,
 } from '@lucide/vue';
+import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent } from 'reka-ui';
+import MenuItem from './ui/MenuItem.vue';
+import { floatingPanel } from './ui/menu.js';
+import { useToastStore } from '@/stores/toasts.js';
 import Button from './ui/Button.vue';
 import Segmented from './ui/Segmented.vue';
 import Stepper from './ui/Stepper.vue';
@@ -213,6 +303,17 @@ const mode = computed({
 const directionLabel = computed(
   () => ({ 1: 'building tempo', 0: 'holding tempo', '-1': 'winding down' })[String(filters.setDirection)]
 );
+
+const toasts = useToastStore();
+function addSeedTo(crate) {
+  const added = crates.add(crate.id, [seed.value.id]);
+  toasts.push({ title: added ? `Added to ${crate.name}` : `Already in ${crate.name}`, tone: added ? 'success' : 'info', duration: 2500 });
+}
+
+/** Jump back to an earlier seed in the trail (dropping what came after it). */
+function goBackTo(track) {
+  while (filters.seedHistory.length && filters.seedTrack?.id !== track.id) filters.back();
+}
 
 /** Keep a built set: it becomes a crate you can reorder and come back to. */
 function saveAsCrate() {

@@ -344,7 +344,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         .build()?;
 
     let file = SubmenuBuilder::new(app, "File")
-        .item(&item("import-serato", "Import Serato Library", Some("CmdOrCtrl+Shift+S"))?)
+        .item(&item("import-serato", "Sync Serato Library", Some("CmdOrCtrl+Shift+I"))?)
         .item(&item("import-music", "Import Music Library", None)?)
         .item(&item("import", "Import…", Some("CmdOrCtrl+I"))?)
         .separator()
@@ -368,13 +368,17 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
 
     let view = SubmenuBuilder::new(app, "View")
         .item(&item("all-tracks", "All Tracks", Some("CmdOrCtrl+0"))?)
+        .item(&item("browse-crates", "Browse Crates…", Some("CmdOrCtrl+K"))?)
         .separator()
         .item(&item("density-comfortable", "Comfortable Rows", Some("CmdOrCtrl+1"))?)
         .item(&item("density-compact", "Compact Rows", Some("CmdOrCtrl+2"))?)
         .separator()
-        .item(&item("source-all", "Show All Sources", None)?)
-        .item(&item("source-spotify", "Show Spotify Only", None)?)
-        .item(&item("source-serato", "Show Serato Only", None)?)
+        .item(&item("source-all", "All Sources", None)?)
+        .item(&item("source-spotify", "Spotify", None)?)
+        .item(&item("source-serato", "Serato", None)?)
+        .item(&item("source-both", "In Both", None)?)
+        .item(&item("source-spotify-only", "Not in Serato", None)?)
+        .item(&item("toggle-hide-used", "Hide/Show Tracks Used in Past Mixtapes", Some("CmdOrCtrl+Shift+H"))?)
         .separator()
         .item(&item("reset-filters", "Reset Filters", Some("CmdOrCtrl+Shift+R"))?)
         .separator()
@@ -382,6 +386,10 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
         .build()?;
 
     let mix = SubmenuBuilder::new(app, "Mix")
+        .item(&item("mix-playing", "Mix From Playing Track", Some("CmdOrCtrl+E"))?)
+        .item(&item("mix-back", "Back to Previous Track", Some("CmdOrCtrl+["))?)
+        .item(&item("discover", "Find New Tracks…", Some("CmdOrCtrl+Shift+F"))?)
+        .separator()
         .item(&item("mix-next", "Next Track Mode", Some("CmdOrCtrl+Shift+N"))?)
         .item(&item("mix-set", "Build a Set Mode", Some("CmdOrCtrl+Shift+B"))?)
         .separator()

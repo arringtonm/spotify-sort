@@ -2,7 +2,7 @@
   <div :class="dense ? 'space-y-5' : 'space-y-7'">
     <!-- Which library: shown once there's more than one source. -->
     <section
-      v-if="filters.hasMultipleSources || usageCount"
+      v-if="filters.hasMultipleSources"
       aria-labelledby="f-source"
       class="space-y-3"
     >
@@ -10,10 +10,9 @@
         id="f-source"
         class="text-sm font-semibold"
       >
-        Library
+        Source
       </h3>
       <div
-        v-if="filters.hasMultipleSources"
         role="radiogroup"
         aria-labelledby="f-source"
         class="flex flex-wrap gap-2"
@@ -31,11 +30,24 @@
           <span class="text-xs text-subtle tabular">{{ filters.sourceCounts[option.value].toLocaleString() }}</span>
         </button>
       </div>
+    </section>
+
+    <!-- Repeats: keep new mixtapes fresh. Remembered between launches. -->
+    <section
+      v-if="usageCount"
+      aria-labelledby="f-repeats"
+      class="space-y-2"
+    >
+      <h3
+        id="f-repeats"
+        class="text-sm font-semibold"
+      >
+        Repeats
+      </h3>
       <Switch
-        v-if="usageCount"
         v-model="filters.hideUsed"
-        label="Hide tracks used in past mixes"
-        :hint="`${usageCount.toLocaleString()} tracks appear in your past mixtapes.`"
+        label="Hide tracks used in past mixtapes"
+        :hint="`${usageCount.toLocaleString()} tracks are in your past mixtapes. When shown, they're marked and suggested last.`"
       />
     </section>
 
@@ -148,11 +160,8 @@
       </section>
     </template>
 
-    <!-- Energy: measured from the audio; offered once some tracks have it. -->
-    <section
-      v-if="filters.energyMeasured"
-      aria-labelledby="f-energy"
-    >
+    <!-- Energy: always laid out (no jump when the first readings arrive). -->
+    <section aria-labelledby="f-energy">
       <div class="mb-0.5 flex items-baseline justify-between">
         <h3
           id="f-energy"
@@ -167,6 +176,7 @@
         :min="1"
         :max="10"
         :thumb-labels="['Minimum energy', 'Maximum energy']"
+        :disabled="!filters.energyMeasured"
       />
       <p class="text-xs leading-5 text-muted">
         {{ energyHint }}
@@ -251,7 +261,7 @@ const GENRE_LIMIT = 12;
 /** One sentence for the current key selection; always present, so no shift. */
 const keyHint = computed(() => {
   const codes = filters.selectedCodes;
-  if (filters.allKeysSelected) return 'Tip: tap Clear, then tap one key and “Mixable” to add the keys that mix with it.';
+  if (filters.allKeysSelected) return 'Tip: Shift-click a key to select it and the keys that mix with it.';
   if (!codes.length) {
     return filters.includeUnknown
       ? 'No keys selected — only tracks without a key are showing.'
@@ -274,9 +284,10 @@ const usageCount = computed(() => crates.usage.size);
 const energyHint = computed(() => {
   const measured = filters.energyMeasured;
   const total = library.tracks.length;
+  if (!measured) return 'Not measured yet — run Measure energy in the analysis panel.';
   return measured < total
-    ? `Measured for ${measured.toLocaleString()} of ${total.toLocaleString()} tracks; the rest appear once analysed.`
-    : 'How hard a track drives: busyness, loudness, tempo and groove.';
+    ? `Measured for ${measured.toLocaleString()} of ${total.toLocaleString()} tracks.`
+    : 'Busyness, loudness, tempo and groove.';
 });
 
 const visibleGenres = computed(() =>

@@ -31,7 +31,7 @@
       variant="ghost"
       size="sm"
       class="shrink-0 text-accent"
-      @click="filters.resetAll()"
+      @click="filters.resetFilters()"
     >
       Clear all
     </Button>

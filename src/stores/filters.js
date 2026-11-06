@@ -32,6 +32,25 @@ export const SORT_FIELDS = [
 
 const RANKS = { camelot: camelotRank, energy: energyLevel };
 
+/** Choices that are about *how you work*, kept between launches. */
+const PREFS_KEY = 'spotify-sort.filter-prefs';
+export const PREF_FIELDS = ['hideUsed', 'sourceFilter', 'energyRange', 'mixPriority', 'bpmTolerance', 'setLength'];
+function savedPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    return Object.fromEntries(Object.entries(p).filter(([k]) => PREF_FIELDS.includes(k)));
+  } catch {
+    return {};
+  }
+}
+export function savePrefs(state) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(Object.fromEntries(PREF_FIELDS.map((k) => [k, state[k]]))));
+  } catch {
+    /* private mode */
+  }
+}
+
 export const useFiltersStore = defineStore('filters', {
   state: () => ({
     // Camelot is the source of truth for key selection. DJs read 8A, not
@@ -58,6 +77,12 @@ export const useFiltersStore = defineStore('filters', {
     mixPriority: 'balanced',
     sort: { key: 'artist', direction: 'asc' },
     sortBeforeSeed: null,
+    // Earlier seeds, so you can step back along the path you've mixed.
+    seedHistory: [],
+    // Mixing inside a crate: { id, name, ids } limits suggestions to it.
+    mixCrate: null,
+    mixInCrate: false,
+    ...savedPrefs(),
   }),
 
   getters: {
@@ -116,7 +141,9 @@ export const useFiltersStore = defineStore('filters', {
      */
     mixPool() {
       const library = useLibraryStore();
-      return library.tracks;
+      if (!this.mixCrate || !this.mixInCrate) return library.tracks;
+      const ids = new Set(this.mixCrate.ids);
+      return library.tracks.filter((t) => ids.has(t.id));
     },
 
     /** Tallies for the Source filter (spotify, serato, both, spotify-only). */
@@ -177,14 +204,23 @@ export const useFiltersStore = defineStore('filters', {
 
     setPath() {
       if (!this.seedTrack || !this.setMode) return [];
+      const usage = useCratesStore().usage;
       return buildSet(this.genrePool(this.mixPool), this.seedTrack, {
         length: this.setLength,
         bpmTolerance: this.bpmTolerance,
         direction: this.setDirection,
         // Genre and energy fit steer each step; the score's tempo part is already
         // the step cost, so weigh the rest.
-        penalty: (t, prev) =>
-          mixScore(prev, t, { tolerance: this.bpmTolerance, priority: this.mixPriority }).score * 1.5,
+        penalty: (t, prev) => {
+          let cost = mixScore(prev, t, { tolerance: this.bpmTolerance, priority: this.mixPriority }).score * 1.5;
+          // Build up / Wind down steer energy as well as tempo.
+          const step = (energyLevel(t) ?? 0) - (energyLevel(prev) ?? 0);
+          if (this.setDirection && energyLevel(t) != null && energyLevel(prev) != null && step * this.setDirection < 0) {
+            cost += Math.abs(step);
+          }
+          if (usage.has(t.id)) cost += 2;
+          return cost;
+        },
       });
     },
 
@@ -224,10 +260,13 @@ export const useFiltersStore = defineStore('filters', {
         // Best match: tempo, key move and confidence, shared genre and energy,
         // with the reasons shown on each row.
         const options = { tolerance: this.bpmTolerance, priority: this.mixPriority };
+        const usage = useCratesStore().usage;
         return matches
           .map((t) => {
             const { score, reasons } = mixScore(this.seedTrack, t, options);
-            return { ...t, matchScore: score, matchReasons: reasons };
+            // Already in a past mixtape: still offered (when not hidden), but later.
+            const used = usage.has(t.id);
+            return { ...t, matchScore: score + (used ? 1 : 0), matchReasons: used ? [...reasons, 'Used before'] : reasons };
           })
           .sort((a, b) => a.matchScore - b.matchScore);
       }
@@ -261,7 +300,7 @@ export const useFiltersStore = defineStore('filters', {
         if (this.sourceFilter !== 'all') {
           chips.push({ id: 'source', label: SOURCE_FILTERS.find((f) => f.value === this.sourceFilter)?.label ?? this.sourceFilter });
         }
-        if (this.hideUsed) chips.push({ id: 'used', label: 'Not in past mixes' });
+        if (this.hideUsed) chips.push({ id: 'used', label: 'Not in past mixtapes' });
         if (this.energyActive) chips.push({ id: 'energy', label: `Energy ${this.energyRange[0]}–${this.energyRange[1]}` });
       };
       if (this.seedTrack) {
@@ -328,14 +367,39 @@ export const useFiltersStore = defineStore('filters', {
   },
 
   actions: {
-    seed(track) {
+    /**
+     * Mix from `track`. `crate` ({ id, name, ids }) keeps suggestions inside a
+     * crate; omitted, the current scope carries on (so hopping stays in it).
+     */
+    seed(track, { crate } = {}) {
       // Compatible tracks arrive ranked by closeness; show that ranking first and
       // put the library sort back afterwards.
-      if (!this.seedTrack) this.sortBeforeSeed = this.sort;
+      if (!this.seedTrack) {
+        this.sortBeforeSeed = this.sort;
+        this.seedHistory = [];
+        this.mixCrate = crate ?? null;
+        this.mixInCrate = Boolean(crate);
+      } else if (this.seedTrack.id !== track.id) {
+        this.seedHistory = [...this.seedHistory, this.seedTrack].slice(-20);
+      }
+      if (crate && this.seedTrack) {
+        this.mixCrate = crate;
+        this.mixInCrate = true;
+      }
       this.seedTrack = track;
       this.sort = { key: 'match', direction: 'asc' };
     },
+    /** Step back to the previous seed. */
+    back() {
+      const previous = this.seedHistory.at(-1);
+      if (!previous) return;
+      this.seedHistory = this.seedHistory.slice(0, -1);
+      this.seedTrack = previous;
+    },
     clearSeed() {
+      this.seedHistory = [];
+      this.mixCrate = null;
+      this.mixInCrate = false;
       if (this.seedTrack && this.sortBeforeSeed) this.sort = this.sortBeforeSeed;
       this.sortBeforeSeed = null;
       this.seedTrack = null;
@@ -345,10 +409,12 @@ export const useFiltersStore = defineStore('filters', {
       this.resetAll();
     },
 
-    /** Back to "show everything". Sort is a view preference, so it stays. */
-    resetAll() {
+    /**
+     * Clear the narrowing filters (keys, tempo, genre, search, source, energy).
+     * Mixing carries on: stopping a mix is its own action.
+     */
+    resetFilters() {
       this.tempoRange = [this.bpmMin, this.bpmMax];
-      this.clearSeed();
       this.genres = [];
       this.query = '';
       this.selectedCodes = [...ALL_CAMELOT_CODES];
@@ -357,6 +423,20 @@ export const useFiltersStore = defineStore('filters', {
       this.sourceFilter = 'all';
       this.hideUsed = false;
       this.energyRange = [1, 10];
+    },
+
+    /** Back to "show everything", and stop mixing. Sort is a view preference, so it stays. */
+    resetAll() {
+      this.clearSeed();
+      this.resetFilters();
+    },
+
+    /** A fresh session: full key and tempo range, but remembered preferences stay. */
+    startSession() {
+      this.tempoRange = [this.bpmMin, this.bpmMax];
+      this.selectedCodes = [...ALL_CAMELOT_CODES];
+      this.query = '';
+      this.genres = [];
     },
 
     removeFilter(id) {

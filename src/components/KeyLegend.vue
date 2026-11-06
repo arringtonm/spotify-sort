@@ -73,7 +73,7 @@
           </div>
           <div class="flex gap-3">
             <dt class="w-14 shrink-0">
-              <History class="size-3.5 text-warn" />
+              <span class="rounded bg-warn-soft px-1 text-[10px] font-semibold text-warn uppercase">Used</span>
             </dt>
             <dd class="text-muted">
               Already used in a past mixtape — the row's ⋯ menu says which.
@@ -103,7 +103,7 @@
 
 <script setup>
 import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
-import { CircleHelp, PenLine, History } from '@lucide/vue';
+import { CircleHelp, PenLine } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import SourceIcons from './SourceIcons.vue';
 import EnergyMeter from './EnergyMeter.vue';

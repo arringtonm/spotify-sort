@@ -38,6 +38,21 @@
       <span class="max-w-40 truncate">{{ crate.name }}</span>
       <span class="text-xs text-subtle tabular">{{ crate.trackIds.length }}</span>
     </button>
+    <!-- Recently opened Serato crates / past mixtapes: one click back. -->
+    <button
+      v-for="crate in crates.recentOther"
+      :key="crate.id"
+      type="button"
+      :class="chip(crates.activeId === crate.id)"
+      :aria-current="crates.activeId === crate.id ? 'page' : undefined"
+      @click="crates.open(crate.id)"
+    >
+      <component
+        :is="crate.origin === 'serato' ? Disc3 : History"
+        class="size-4"
+      />
+      <span class="max-w-32 truncate">{{ crate.name }}</span>
+    </button>
     <Button
       variant="ghost"
       size="sm"
@@ -57,7 +72,7 @@
 
 <script setup>
 import { computed, ref } from 'vue';
-import { Library, Folder, FolderOpen, FolderPlus } from '@lucide/vue';
+import { Library, Folder, FolderOpen, FolderPlus, Disc3, History } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import CrateBrowser from './CrateBrowser.vue';
 import { useCratesStore } from '@/stores/crates.js';

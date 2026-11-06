@@ -32,6 +32,16 @@ function load() {
   }
 }
 
+const RECENT_KEY = 'spotify-sort.recent-crates';
+function loadRecent() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(RECENT_KEY));
+    return Array.isArray(ids) ? ids.filter((x) => typeof x === 'string').slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
 function newId() {
   return globalThis.crypto?.randomUUID?.() ?? `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -48,6 +58,8 @@ export const useCratesStore = defineStore('crates', {
     /** True while a track is being dragged, so drop targets can show. */
     dragging: false,
     saveError: false,
+    /** Most recently opened first; drives the chip row and "Keep" menus. */
+    recentIds: loadRecent(),
   }),
 
   getters: {
@@ -108,8 +120,21 @@ export const useCratesStore = defineStore('crates', {
 
     byId: (state) => (id) => state.crates.find((c) => c.id === id) ?? null,
 
-    /** Your own crates (drop targets): not Serato mirrors, not past mixtapes. */
-    userCrates: (state) => state.crates.filter((c) => c.origin === 'user'),
+    /** Your own crates (drop targets), most recently used first. */
+    userCrates(state) {
+      const rank = new Map(state.recentIds.map((id, i) => [id, i]));
+      return state.crates
+        .filter((c) => c.origin === 'user')
+        .sort((a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99));
+    },
+
+    /** Recently opened Serato crates and past mixtapes, for one-click return. */
+    recentOther(state) {
+      return state.recentIds
+        .map((id) => state.crates.find((c) => c.id === id))
+        .filter((c) => c && c.origin !== 'user')
+        .slice(0, 3);
+    },
 
     /** Trees per group, for the crate browser. */
     groups(state) {
@@ -244,6 +269,12 @@ export const useCratesStore = defineStore('crates', {
 
     open(id) {
       this.activeId = id;
+      this.recentIds = [id, ...this.recentIds.filter((x) => x !== id)].slice(0, 8);
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(this.recentIds));
+      } catch {
+        /* private mode */
+      }
     },
 
     close() {

@@ -243,7 +243,10 @@ const themeOptions = [
 ];
 
 const outstanding = computed(() => library.counts.pending + library.counts.failed);
-const showAnalysis = computed(() => library.busy || outstanding.value > 0);
+// Also shown while tracks still need an energy reading, so that's findable.
+const showAnalysis = computed(
+  () => library.busy || outstanding.value > 0 || (!library.isDemo && library.energyBacklog().length > 0)
+);
 const ring = computed(() => {
   if (library.progress?.total) return library.progress.done / library.progress.total;
   const total = library.total || 1;

@@ -22,7 +22,7 @@
         :aria-disabled="disabled || undefined"
         :tabindex="disabled ? -1 : i === focusIndex ? 0 : -1"
         class="cursor-pointer outline-none [&:focus-visible>path]:stroke-[var(--text)] [&:focus-visible>path]:stroke-[2.5]"
-        @click="toggle(seg.code, i)"
+        @click="toggle(seg.code, i, $event)"
         @focus="focusIndex = i"
       >
         <path
@@ -167,9 +167,22 @@ const focusIndex = ref(Math.max(0, segments.value.findIndex((s) => isOn(s.code))
 const refs = [];
 const root = ref(null);
 
-function toggle(code, index) {
+/** The key and the keys that mix with it: ±1 on the wheel and its relative. */
+function mixable(code) {
+  const n = Number(code.slice(0, -1));
+  const letter = code.slice(-1);
+  const wrap = (x) => ((x - 1 + 12) % 12) + 1;
+  return [code, `${wrap(n - 1)}${letter}`, `${wrap(n + 1)}${letter}`, `${n}${letter === 'A' ? 'B' : 'A'}`];
+}
+
+function toggle(code, index, event) {
   if (props.disabled) return;
   focusIndex.value = index;
+  // Shift-click: exactly this key and everything that mixes with it.
+  if (event?.shiftKey && !props.single) {
+    emit('update:modelValue', mixable(code));
+    return;
+  }
   if (props.single) {
     emit('update:modelValue', props.modelValue === code ? null : code);
     return;

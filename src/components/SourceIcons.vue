@@ -1,11 +1,10 @@
 <template>
   <!--
-    Where a track lives, at a glance: Spotify (green), Serato (red record), and a
-    clock when it was already used in a past mixtape. Meaning is also in the
+    Where a track lives, at a glance: Spotify (green) and Serato (red record). Meaning is also in the
     legend and in screen-reader text, never only in colour or a tooltip.
   -->
   <span
-    v-if="spotify || serato || used.length"
+    v-if="spotify || serato"
     class="inline-flex shrink-0 items-center gap-0.5 align-[-2px]"
   >
     <svg
@@ -44,33 +43,23 @@
       r="2.25"
       fill="currentColor"
     /></svg>
-    <History
-      v-if="used.length"
-      class="size-3.5 text-warn"
-      aria-hidden="true"
-    />
     <span class="sr-only">{{ srText }}</span>
   </span>
 </template>
 
 <script setup>
 import { computed } from 'vue';
-import { History } from '@lucide/vue';
 import { trackSources } from '@/lib/trackInfo.js';
-import { useCratesStore } from '@/stores/crates.js';
 
 const props = defineProps({ track: { type: Object, required: true } });
-const crates = useCratesStore();
 const sources = computed(() => trackSources(props.track));
 const spotify = computed(() => sources.value.has('spotify'));
 const serato = computed(() => sources.value.has('serato'));
 const missing = computed(() => Boolean(props.track.serato?.missing));
-const used = computed(() => crates.usage.get(props.track.id) ?? []);
 const srText = computed(() =>
   [
     spotify.value && 'in Spotify',
     serato.value && (missing.value ? 'in Serato, file missing' : 'in Serato'),
-    used.value.length && `used in ${used.value.join(', ')}`,
   ]
     .filter(Boolean)
     .join(', ')
