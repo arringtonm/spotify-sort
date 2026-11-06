@@ -4,6 +4,7 @@ import { getPreviewUrl, resolve as resolveDeezer } from '../services/deezer.js';
 import { getWaveform, putWaveform } from '../services/db.js';
 import { decodeAudio, waveformInWorker } from '../services/enrich.js';
 import { WAVEFORM_VERSION } from '../lib/waveform.js';
+import { localFile } from '../services/localFiles.js';
 
 /**
  * 30-second preview playback.
@@ -157,6 +158,20 @@ export const usePlayerStore = defineStore('player', {
       this.waveform = null;
       this.loadingId = track.id;
       try {
+        // A file dropped this session plays from the file itself, full length.
+        const file = localFile(track.id);
+        if (file) {
+          const cached = await cachedWaveform(track.id);
+          this.waveform = cached ? markRaw(cached) : null;
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          objectUrl = URL.createObjectURL(file);
+          player.src = objectUrl;
+          await player.play();
+          this.currentId = track.id;
+          this.updateMediaMetadata(track);
+          return;
+        }
+
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
           throw new Error('You’re offline — previews need a connection.');
         }
@@ -166,7 +181,13 @@ export const usePlayerStore = defineStore('player', {
           url = match?.preview ?? null;
         }
         url = url || track.previewUrl || null;
-        if (!url) throw new Error('No preview available for this track.');
+        if (!url) {
+          throw new Error(
+            track.source === 'file'
+              ? 'This track came from a file on your device. Drop the file into the Library again to play it.'
+              : 'No preview available for this track.'
+          );
+        }
         // A later press may have superseded this one while we were resolving.
         if (this.loadingId !== track.id) return;
 

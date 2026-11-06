@@ -38,6 +38,16 @@ import { downloadCsv } from '../lib/exportFormats.js';
 import { useOverridesStore } from './overrides.js';
 import { useAuthStore } from './auth.js';
 import { requestPersistence } from '../services/storage.js';
+import { decodeAudio, analyseInWorker, releaseAnalysisWorkers } from '../services/enrich.js';
+import { putWaveform } from '../services/db.js';
+import { rememberFile } from '../services/localFiles.js';
+import { displayName } from '../lib/musicalKey.js';
+import {
+  isAudioFile,
+  fileTrackId,
+  parseAudioFilename,
+  MAX_SECONDS,
+} from '../lib/audioFiles.js';
 
 /** The 2022 snapshot: signed-out demo, test fixture, and analyser validation set. */
 const DEMO = demoTracks.map((t) => ({
@@ -84,6 +94,7 @@ export const useLibraryStore = defineStore('library', {
         traktor: 'Traktor',
         csv: 'CSV import',
         link: 'Imported link',
+        files: 'Audio files',
       })[state.origin] ?? state.origin,
     total: (state) => state.raw.length,
     /** Work still outstanding — drives the Resume affordance. */
@@ -462,6 +473,74 @@ export const useLibraryStore = defineStore('library', {
 
     async importFromFile(file) {
       return this.importParsed(await this.previewFile(file));
+    },
+
+    /**
+     * Analyse local audio files at full length: tempo, key and waveform, all on
+     * this device. One at a time — a decoded 6-minute track is ~127 MB, and a
+     * phone can't hold several.
+     */
+    async importAudioFiles(fileList) {
+      const files = [...fileList].filter(isAudioFile);
+      if (!files.length) throw new Error('None of those look like audio files.');
+
+      return this.withBusy(async () => {
+        const tracks = [];
+        const skipped = [];
+        for (const [index, file] of files.entries()) {
+          this.setProgress(`Analysing ${file.name} — ${index + 1} of ${files.length}`, index, files.length);
+          const id = fileTrackId(file);
+          try {
+            const pcm = await decodeAudio(await file.arrayBuffer());
+            const seconds = pcm.length / pcm.sampleRate;
+            if (seconds > MAX_SECONDS) {
+              skipped.push(`${file.name} (longer than ${MAX_SECONDS / 60} minutes)`);
+              continue;
+            }
+            const analysis = await analyseInWorker(pcm.channels, pcm.length, pcm.sampleRate);
+            if (analysis.waveform) await putWaveform(id, analysis.waveform).catch(() => {});
+            rememberFile(id, file);
+            const { artist, title } = parseAudioFilename(file.name);
+            tracks.push({
+              id,
+              artist,
+              title,
+              album: null,
+              artwork: null,
+              isrc: null,
+              durationMs: Math.round(seconds * 1000),
+              genres: [],
+              tempo: analysis.tempo ?? null,
+              pitchClass: analysis.pitchClass ?? null,
+              key: analysis.pitchClass == null ? null : displayName(analysis.pitchClass),
+              mode: analysis.mode ?? null,
+              tempoSource: 'analysis',
+              keySource: 'analysis',
+              keyConfident: Boolean(analysis.keyConfident),
+              source: 'file',
+              analysisState: 'done',
+            });
+          } catch (error) {
+            skipped.push(`${file.name} (${error?.message || 'could not be decoded'})`);
+          }
+        }
+        releaseAnalysisWorkers();
+
+        if (!tracks.length) {
+          throw new Error(`Couldn't analyse ${skipped.length === 1 ? 'that file' : 'those files'}: ${skipped.join('; ')}`);
+        }
+        const merge = await putTracks(tracks);
+        await setMeta('library', { origin: 'files', at: Date.now() });
+        this.raw = await getAllTracks();
+        this.origin = 'files';
+        this.originDetail = null;
+        await this.refreshCounts();
+        this.summary =
+          `Analysed ${tracks.length} full-length ${tracks.length === 1 ? 'track' : 'tracks'} ` +
+          `(${merge.added} new). The audio stays on your device and isn't stored.`;
+        if (skipped.length) this.warning = `Skipped: ${skipped.join('; ')}`;
+        return this.raw;
+      });
     },
 
     listPlaylists() {

@@ -314,6 +314,51 @@
         </p>
       </section>
 
+      <!-- 3b. Local audio: full-length analysis on this device. -->
+      <section aria-labelledby="lib-audio">
+        <SectionTitle
+          id="lib-audio"
+          :icon="AudioWaveform"
+        >
+          Audio files
+        </SectionTitle>
+        <p class="mb-3 text-sm text-muted">
+          Analyse whole tracks on this device for the most accurate tempo, key and a full-length
+          waveform. Files are named “Artist - Title”? Even better. Nothing is uploaded.
+        </p>
+        <div
+          :class="[
+            'relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors',
+            draggingAudio ? 'border-accent bg-accent-soft/40' : 'border-border-strong',
+          ]"
+          @dragover.prevent="draggingAudio = true"
+          @dragleave="draggingAudio = false"
+          @drop.prevent="onAudioDrop"
+        >
+          <AudioWaveform
+            class="size-6 text-muted"
+            aria-hidden="true"
+          />
+          <p class="text-sm">
+            <span class="hidden md:inline">Drop audio files here, or </span>
+            <label class="cursor-pointer font-medium text-accent underline-offset-2 hover:underline">
+              <span class="md:hidden">Choose audio files</span><span class="hidden md:inline">choose files</span>
+              <input
+                type="file"
+                multiple
+                :accept="AUDIO_ACCEPT"
+                class="sr-only"
+                :disabled="library.busy"
+                @change="importAudio($event.target.files); $event.target.value = ''"
+              >
+            </label>
+          </p>
+          <p class="text-xs text-subtle">
+            MP3 · AAC · WAV · AIFF · FLAC · up to 12 minutes each
+          </p>
+        </div>
+      </section>
+
       <!-- 4. Analysis -->
       <section
         v-if="!library.isDemo"
@@ -416,7 +461,9 @@ import {
   CircleAlert,
   CircleCheck,
   WifiOff,
+  AudioWaveform,
 } from '@lucide/vue';
+import { AUDIO_ACCEPT, isAudioFile } from '@/lib/audioFiles.js';
 import { useOnline } from '@vueuse/core';
 import Sheet from './ui/Sheet.vue';
 import Button from './ui/Button.vue';
@@ -579,7 +626,34 @@ async function onFile(file) {
 
 function onDrop(event) {
   dragging.value = false;
-  onFile(event.dataTransfer?.files?.[0]);
+  const files = [...(event.dataTransfer?.files ?? [])];
+  // Audio dropped on the library-file zone is almost certainly meant for analysis.
+  if (files.length && files.every(isAudioFile)) return importAudio(files);
+  onFile(files[0]);
+}
+
+// ---- Audio files -------------------------------------------------------------
+const draggingAudio = ref(false);
+
+function onAudioDrop(event) {
+  draggingAudio.value = false;
+  importAudio(event.dataTransfer?.files);
+}
+
+async function importAudio(fileList) {
+  const files = [...(fileList ?? [])];
+  if (!files.length) return;
+  busyWith.value = 'audio';
+  try {
+    await library.importAudioFiles(files);
+    filters.resetAll();
+    announce();
+    emit('update:open', false);
+  } catch {
+    /* library.error */
+  } finally {
+    busyWith.value = null;
+  }
 }
 
 async function importFile() {

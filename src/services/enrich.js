@@ -34,7 +34,7 @@ export function releaseAnalysisWorkers() {
   pool = null;
 }
 
-function analyseInWorker(channels, length, sampleRate) {
+export function analyseInWorker(channels, length, sampleRate) {
   const buffers = channels.map((c) => c.buffer);
   return getPool().submit({ channels: buffers, length, sampleRate }, buffers);
 }
