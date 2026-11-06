@@ -51,8 +51,10 @@ function finalise(raw) {
     key: pitchClass == null ? null : displayName(pitchClass),
     mode: mode ?? null,
     durationMs: raw.durationMs ?? null,
-    genres: raw.genre ? [raw.genre] : [],
-    isrc: null,
+    genres: raw.genres ?? (raw.genre ? [raw.genre] : []),
+    isrc: raw.isrc || null,
+    ...(raw.uri ? { uri: raw.uri } : {}),
+    ...(raw.album ? { album: raw.album } : {}),
     source: raw.source,
     tempoSource: raw.source,
     keySource: raw.source,
@@ -130,27 +132,51 @@ export function parseCsv(text) {
   const header = splitCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z]/g, ''));
   const find = (...names) => header.findIndex((h) => names.includes(h));
 
-  const iArtist = find('artist', 'artistname', 'albumartist');
+  const iArtist = find('artist', 'artistname', 'artistnames', 'albumartist', 'artists');
   const iTitle = find('title', 'name', 'trackname', 'song');
   const iTempo = find('bpm', 'tempo', 'averagebpm');
   const iKey = find('key', 'tonality', 'musicalkey', 'camelot');
-  const iGenre = find('genre');
+  const iMode = find('mode');
+  const iGenre = find('genre', 'genres');
+  // Spotify playlist exports (Exportify and similar) carry these too.
+  const iUri = find('trackuri', 'spotifyuri', 'uri');
+  const iIsrc = find('isrc');
+  const iAlbum = find('album', 'albumname');
+  const iDuration = find('durationms');
   if (iArtist === -1 || iTitle === -1) return [];
 
   return lines.slice(1).map((line) => {
     const cells = splitCsvLine(line);
     const rawKey = iKey === -1 ? null : cells[iKey];
-    const parsed = fromRekordboxKey(rawKey);
-    // Some exports keep key and mode in separate columns.
-    if (parsed.pitchClass == null && rawKey) {
-      parsed.pitchClass = toPitchClass(rawKey);
-      parsed.mode = normaliseMode(cells[find('mode')] ?? 'maj') ?? 'maj';
+    const rawMode = iMode === -1 ? null : cells[iMode];
+    let parsed;
+    if (/^-?\d{1,2}$/.test(rawKey ?? '') && /^[01]$/.test(rawMode ?? '')) {
+      // Spotify's audio-features encoding: key = pitch class 0-11 (-1 unknown),
+      // mode 1 = major, 0 = minor.
+      const pc = Number(rawKey);
+      parsed = pc >= 0 && pc <= 11
+        ? { pitchClass: pc, mode: rawMode === '1' ? 'maj' : 'min' }
+        : { pitchClass: null, mode: null };
+    } else {
+      parsed = fromRekordboxKey(rawKey);
+      // Some exports keep key and mode in separate columns.
+      if (parsed.pitchClass == null && rawKey) {
+        parsed.pitchClass = toPitchClass(rawKey);
+        parsed.mode = parsed.pitchClass == null ? null : (normaliseMode(rawMode ?? 'maj') ?? 'maj');
+      }
     }
+    const spotifyId = /^spotify:track:([A-Za-z0-9]{22})$/.exec(cells[iUri] ?? '')?.[1];
+    const genreCell = iGenre === -1 ? '' : cells[iGenre] || '';
     return finalise({
+      id: spotifyId,
+      uri: spotifyId ? cells[iUri] : undefined,
       artist: cells[iArtist],
       title: cells[iTitle],
+      album: iAlbum === -1 ? undefined : cells[iAlbum] || undefined,
+      isrc: iIsrc === -1 ? null : cells[iIsrc] || null,
+      durationMs: iDuration === -1 ? undefined : Number(cells[iDuration]) || undefined,
       tempo: iTempo === -1 ? NaN : Number(cells[iTempo]),
-      genre: iGenre === -1 ? null : cells[iGenre] || null,
+      genres: genreCell ? genreCell.split(/\s*[,;]\s*/).filter(Boolean) : [],
       source: 'csv',
       ...parsed,
     });

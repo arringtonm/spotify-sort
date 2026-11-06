@@ -11,6 +11,7 @@ import {
   getAlbumTracks,
   getTrack,
   getEmbedTracks,
+  getTracksByIds,
   EMBED_PROXY,
   signedIn as spotifySignedIn,
 } from '../services/spotifyApi.js';
@@ -48,6 +49,9 @@ import {
   parseAudioFilename,
   MAX_SECONDS,
 } from '../lib/audioFiles.js';
+
+/** Spotify's embed page lists at most this many tracks, with no paging. */
+const EMBED_PAGE_LIMIT = 100;
 
 /** The 2022 snapshot: signed-out demo, test fixture, and analyser validation set. */
 const DEMO = demoTracks.map((t) => ({
@@ -275,7 +279,9 @@ export const useLibraryStore = defineStore('library', {
 
         const merge = await putTracks(tracks);
         const detail = {
-          name: report.name ?? `${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}`,
+          name:
+            report.name ??
+            `${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}`,
           provider: ref.provider,
           type: ref.type,
           url: ref.url,
@@ -290,14 +296,21 @@ export const useLibraryStore = defineStore('library', {
           merge,
           total: report.total,
           skipped: report.skipped ?? 0,
+          skipReason:
+            ref.type === 'tracks' ? 'Spotify returned nothing for those links' : undefined,
           complete: report.complete,
           failure: report.failure,
         });
         if (report.unofficial) {
-          this.summary +=
-            ' Read from Spotify’s public embed page, which can be incomplete for long playlists.';
+          this.summary += ' Read from Spotify’s public embed page.';
           if (report.total && tracks.length < report.total) {
             this.warning = `Loaded the first ${tracks.length} of ${report.total} tracks.`;
+          } else if (tracks.length >= EMBED_PAGE_LIMIT && ref.type === 'playlist') {
+            // The public page stops at 100 and doesn't say how many there are.
+            this.warning =
+              `Spotify’s public page only lists the first ${EMBED_PAGE_LIMIT} tracks, so this ` +
+              'playlist may be longer. To import all of it: open it in the Spotify desktop app, ' +
+              'click any track, press ⌘A (Ctrl+A) then ⌘C (Ctrl+C), and paste here.';
           }
         }
         await this.analyse(selectPending(this.raw));
@@ -312,6 +325,7 @@ export const useLibraryStore = defineStore('library', {
         return getEmbedTracks(ref.type, ref.id);
       };
 
+      if (ref.type === 'tracks') return getTracksByIds(ref.ids, onFetch);
       if (!signed) {
         return viaEmbed(
           'Sign in with Spotify to import Spotify links, or paste a Deezer link — those work without signing in.'
@@ -344,13 +358,15 @@ export const useLibraryStore = defineStore('library', {
     },
 
     /** Say plainly what was imported, reused, and skipped. */
-    explainImport({ merge, total, skipped, complete, failure }) {
+    explainImport({ merge, total, skipped, complete, failure, skipReason }) {
       const parts = [`${merge.added} new`];
       if (merge.kept) parts.push(`${merge.kept} already known (analysis reused)`);
       if (skipped) {
         parts.push(
-          `${skipped} skipped — local files or region-unavailable tracks have no ` +
-            'Spotify ID to work with'
+          `${skipped} skipped — ${
+            skipReason ??
+            'local files or region-unavailable tracks have no Spotify ID to work with'
+          }`
         );
       }
       if (!complete) {
@@ -471,9 +487,15 @@ export const useLibraryStore = defineStore('library', {
         this.originDetail = null;
         await this.refreshCounts();
 
+        const pending = selectPending(this.raw);
         this.summary =
           `${merge.added} new tracks from ${format}, ${merge.kept} already known. ` +
-          'Tempo and key come from your DJ software, so they are trusted as-is.';
+          (pending.length
+            ? `${pending.length} without tempo or key are being analysed from previews.`
+            : 'Tempo and key come from the file, so they are trusted as-is.');
+        // Spotify playlist exports usually lack tempo and key now that Spotify
+        // stopped providing them; fill those in the same way as any import.
+        if (pending.length) await this.analyse(pending);
         return this.raw;
       });
     },

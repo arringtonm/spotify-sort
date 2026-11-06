@@ -294,6 +294,58 @@ export async function getEmbedTracks(type, id) {
   return { name: page.name, owner: page.owner, tracks, total: null, complete: true, unofficial: true };
 }
 
+/** Run `fn` over items with at most `limit` in flight, keeping input order. */
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return results;
+}
+
+/**
+ * Many individual tracks, e.g. a whole playlist copied from the Spotify desktop
+ * app. Signed in, each comes from the Web API (with ISRC); signed out, from the
+ * track's public embed page. Spotify removed the batch /tracks endpoint for
+ * development-mode apps in Feb 2026, so this is one request per track, kept to
+ * a few at a time to stay clear of rate limits.
+ */
+export async function getTracksByIds(ids, onProgress) {
+  const viaApi = isLoggedIn();
+  if (!viaApi && !EMBED_PROXY) {
+    throw new Error('Sign in with Spotify to import a list of tracks.');
+  }
+  let done = 0;
+  let failure = null;
+  const rows = await mapLimit(ids, viaApi ? 3 : 4, async (id) => {
+    let track = null;
+    try {
+      if (viaApi) track = normaliseTrack(await request(`/tracks/${id}`));
+      else track = (await getEmbedTracks('track', id)).tracks[0] ?? null;
+    } catch (error) {
+      failure = error.message;
+    }
+    done += 1;
+    onProgress?.({ loaded: done, total: ids.length });
+    return track;
+  });
+  const tracks = rows.filter(Boolean);
+  return {
+    name: `${ids.length} pasted tracks`,
+    tracks,
+    total: ids.length,
+    skipped: ids.length - tracks.length,
+    complete: tracks.length === ids.length,
+    failure: tracks.length ? null : failure,
+  };
+}
+
 export function signedIn() {
   return isLoggedIn();
 }

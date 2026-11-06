@@ -100,3 +100,26 @@ test('missing tempo or key degrades to null rather than NaN', () => {
   assert.equal(tracks[0].key, null);
   assert.equal(tracks[0].mode, null);
 });
+
+test('reads Spotify playlist CSV exports (Exportify-style)', async () => {
+  const { parseCsv } = await import('../src/lib/djLibrary.js');
+  const csv = [
+    '"Track URI","Track Name","Album Name","Artist Name(s)","Duration (ms)","ISRC","Genres","Key","Mode","Tempo"',
+    '"spotify:track:7bxaFZ1O3cHkgLKMsdC3xR","Loser","Deadbeat","Tame Impala","223069","AUUM72500001","psychedelic rock,indie","9","0","121.98"',
+    '"spotify:track:0VjIjW4GlUZAMYd2vXMi3b","Blinding Lights","After Hours","The Weeknd","200040","USUG11904206","","-1","1",""',
+  ].join('\n');
+  const [a, b] = parseCsv(csv);
+  assert.equal(a.id, '7bxaFZ1O3cHkgLKMsdC3xR');
+  assert.equal(a.uri, 'spotify:track:7bxaFZ1O3cHkgLKMsdC3xR');
+  assert.equal(a.artist, 'Tame Impala');
+  assert.equal(a.album, 'Deadbeat');
+  assert.equal(a.isrc, 'AUUM72500001');
+  assert.equal(a.durationMs, 223069);
+  assert.deepEqual(a.genres, ['psychedelic rock', 'indie']);
+  assert.equal(a.pitchClass, 9);
+  assert.equal(a.mode, 'min');
+  assert.equal(a.tempo, 121.98);
+  // Audio features are gone from newer exports: unknown key, no tempo.
+  assert.equal(b.pitchClass, null);
+  assert.equal(b.tempo, null);
+});

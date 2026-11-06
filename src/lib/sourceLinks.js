@@ -17,6 +17,19 @@ export function parseSourceLink(input) {
   const text = String(input ?? '').trim();
   if (!text) return { error: 'Paste a link to a playlist, album or track.' };
 
+  // Several track links at once — what Spotify's desktop app puts on the
+  // clipboard when you select tracks (⌘A) and copy (⌘C). This is how to bring in
+  // a whole playlist, past the 100-track limit of Spotify's public page.
+  const trackIds = extractTrackIds(text);
+  if (trackIds.length > 1) {
+    return {
+      provider: 'spotify',
+      type: 'tracks',
+      ids: trackIds,
+      url: `https://open.spotify.com/track/${trackIds[0]}`,
+    };
+  }
+
   // spotify:playlist:ID, spotify:album:ID, spotify:track:ID, and the legacy
   // spotify:user:NAME:playlist:ID form.
   const uri = text.match(
@@ -90,6 +103,23 @@ function artistError() {
   return {
     error: 'Artist pages can\'t be imported — share one of their albums or a playlist instead.',
   };
+}
+
+/** Every distinct Spotify track ID in the text, in order. */
+export function extractTrackIds(text) {
+  const pattern = new RegExp(
+    `(?:open\\.spotify\\.com/(?:intl-[a-z-]+/)?track/|spotify:track:)(${SPOTIFY_ID})`,
+    'g'
+  );
+  const ids = [];
+  const seen = new Set();
+  for (const match of String(text ?? '').matchAll(pattern)) {
+    if (!seen.has(match[1])) {
+      seen.add(match[1]);
+      ids.push(match[1]);
+    }
+  }
+  return ids;
 }
 
 /** True when text looks enough like a music link to offer an import. */

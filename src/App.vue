@@ -71,7 +71,10 @@ function onPaste(event) {
   if (!looksLikeSourceLink(text)) return;
   const ref = parseSourceLink(text);
   toasts.push({
-    title: `Import this ${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}?`,
+    title:
+      ref.type === 'tracks'
+        ? `Import ${ref.ids.length} Spotify tracks?`
+        : `Import this ${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}?`,
     description: ref.url,
     action: { label: 'Import', run: () => ui.importLink(text) },
   });

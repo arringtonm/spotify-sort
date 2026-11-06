@@ -48,25 +48,26 @@
           <Field
             v-slot="{ id, describedBy, invalid }"
             label="Playlist, album or track link"
-            :lines="3"
+            :lines="4"
             :hint="linkHint"
             :error="linkError"
           >
-            <TextInput
+            <!-- A textarea, not an input: a list of track links copied from
+                 Spotify is one per line, and inputs strip line breaks. -->
+            <textarea
               :id="id"
-              ref="linkInput"
               v-model="link"
-              type="url"
-              inputmode="url"
+              rows="2"
               autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
               placeholder="https://open.spotify.com/playlist/…"
-              clearable
-              clear-label="link"
+              class="block max-h-40 min-h-20 w-full resize-y rounded-lg border border-border-strong bg-surface px-3 py-2.5 font-mono text-[13px] leading-5 text-text break-all placeholder:font-sans placeholder:text-sm placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-ring focus:outline-none aria-[invalid=true]:border-danger"
               :aria-describedby="describedBy"
               :aria-invalid="invalid"
               @blur="touchedLink = Boolean(link)"
+              @keydown.enter.meta.prevent="importLink"
+              @keydown.enter.ctrl.prevent="importLink"
             />
           </Field>
           <p
@@ -78,7 +79,7 @@
                 class="size-4 text-ok"
                 aria-hidden="true"
               />
-              {{ parsedLink.provider === 'deezer' ? 'Deezer' : 'Spotify' }} {{ parsedLink.type }}
+              {{ linkSummary }}
               <template v-if="usesEmbed">
                 · read from Spotify's public page (unofficial)
               </template>
@@ -90,7 +91,7 @@
             :loading="library.busy && busyWith === 'link'"
             :disabled="library.busy || !online"
           >
-            Import {{ parsedLink && !parsedLink.error ? parsedLink.type : 'link' }}
+            {{ importLabel }}
           </Button>
         </form>
       </section>
@@ -506,12 +507,23 @@ const showDevNotes = import.meta.env.DEV || !auth.diagnostics.originMatches;
 
 // ---- Link import -----------------------------------------------------------
 const link = ref('');
-const linkInput = ref(null);
 const touchedLink = ref(false);
 const submittedLink = ref(false);
 const linkHint =
-  'Spotify or Deezer. In the app: Share → Copy link, then paste it here.';
+  'Spotify or Deezer: Share → Copy link. For a whole long playlist, select its tracks in the Spotify desktop app (⌘A / Ctrl+A), copy (⌘C / Ctrl+C) and paste the list here.';
 const parsedLink = computed(() => (link.value.trim() ? parseSourceLink(link.value) : null));
+const linkSummary = computed(() => {
+  const ref = parsedLink.value;
+  if (!ref || ref.error) return '';
+  if (ref.type === 'tracks') return `${ref.ids.length} Spotify tracks`;
+  return `${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}`;
+});
+const importLabel = computed(() => {
+  const ref = parsedLink.value;
+  if (!ref || ref.error) return 'Import link';
+  if (ref.type === 'tracks') return `Import ${ref.ids.length} tracks`;
+  return `Import ${ref.type}`;
+});
 const usesEmbed = computed(
   () =>
     parsedLink.value?.provider === 'spotify' &&

@@ -91,3 +91,16 @@ test('extracts the single track from a track embed page', () => {
   assert.equal(tracks[0].artist, 'Tame Impala');
   assert.equal(tracks[0].previewUrl, 'https://p.scdn.co/mp3-preview/x');
 });
+
+test('a pasted list of track links becomes one multi-track import', () => {
+  const ids = ['7bxaFZ1O3cHkgLKMsdC3xR', '0VjIjW4GlUZAMYd2vXMi3b', '4uLU6hMCjMI75M1A2tKUQC'];
+  const text = [
+    `https://open.spotify.com/track/${ids[0]}`,
+    `https://open.spotify.com/track/${ids[1]}?si=x`,
+    `https://open.spotify.com/intl-de/track/${ids[2]}`,
+    `https://open.spotify.com/track/${ids[0]}`, // duplicate
+  ].join('\n');
+  const result = parseSourceLink(text);
+  assert.equal(result.type, 'tracks');
+  assert.deepEqual(result.ids, ids);
+});
