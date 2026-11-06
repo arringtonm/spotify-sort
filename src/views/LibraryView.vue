@@ -16,7 +16,7 @@
       <!-- Fixed-height row; Reset is always laid out and only hidden when
            there's nothing to reset, so the panel below never moves. -->
       <div
-        v-if="!filters.seedTrack || filters.genreOptions.length"
+        v-if="!crates.active && (!filters.seedTrack || filters.genreOptions.length)"
         class="mb-2 flex h-9 items-center justify-between"
       >
         <h2
@@ -37,25 +37,10 @@
           Reset
         </Button>
       </div>
-      <div
+      <CrateHeader
         v-if="crates.active"
-        class="rounded-xl border border-border bg-surface-2/60 p-4 text-sm"
-      >
-        <p class="font-medium">
-          Viewing a crate
-        </p>
-        <p class="mt-1 text-muted">
-          A crate shows every track you put in it, in your order. Filters apply to All tracks.
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          class="mt-3"
-          @click="crates.close()"
-        >
-          <Library /> Back to all tracks
-        </Button>
-      </div>
+        variant="sidebar"
+      />
       <FilterPanel
         v-else
         dense
@@ -139,7 +124,10 @@
 
         <CrateBar />
 
-        <CrateHeader v-if="crates.active" />
+        <CrateHeader
+          v-if="crates.active"
+          class="lg:hidden"
+        />
         <SeedCard
           v-else
           class="lg:hidden"
@@ -159,6 +147,7 @@
             class="flex-1"
             :class="crates.active && 'invisible'"
           />
+          <DensityToggle />
         </div>
       </div>
 
@@ -277,6 +266,7 @@ import CrateBar from '@/components/CrateBar.vue';
 import CrateHeader from '@/components/CrateHeader.vue';
 import CrateDialogs from '@/components/CrateDialogs.vue';
 import CrateDock from '@/components/CrateDock.vue';
+import DensityToggle from '@/components/DensityToggle.vue';
 import { useCratesStore, CRATES_STORAGE_KEY } from '@/stores/crates.js';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';

@@ -93,11 +93,15 @@
           >
             <button
               type="button"
-              class="flex w-full min-w-0 items-center gap-3 rounded-lg py-1.5 pr-2 text-left"
+              class="flex w-full min-w-0 items-center rounded-lg pr-2 text-left"
+              :class="compact ? 'gap-2.5' : 'gap-3 py-1.5'"
               :aria-label="`${player.isPlaying(track.id) ? 'Pause' : 'Play'} preview: ${track.title} by ${track.artist}`"
               @click="player.toggle(track)"
             >
-              <span class="relative size-11 shrink-0 overflow-hidden rounded-md bg-surface-3">
+              <span
+                class="relative shrink-0 overflow-hidden bg-surface-3"
+                :class="compact ? 'size-6 rounded' : 'size-11 rounded-md'"
+              >
                 <img
                   v-if="track.artwork"
                   :src="track.artwork"
@@ -118,24 +122,37 @@
                 >
                   <span
                     v-if="player.isLoading(track.id)"
-                    class="size-4 animate-spin rounded-full border-2 border-white border-r-transparent"
+                    class="animate-spin rounded-full border-2 border-white border-r-transparent"
+                    :class="compact ? 'size-3' : 'size-4'"
                   />
                   <Pause
                     v-else-if="player.isPlaying(track.id)"
-                    class="size-5 fill-current"
+                    class="fill-current"
+                    :class="compact ? 'size-3' : 'size-5'"
                   />
                   <Play
                     v-else
-                    class="size-5 fill-current"
+                    class="fill-current"
+                    :class="compact ? 'size-3' : 'size-5'"
                   />
                 </span>
               </span>
-              <span class="min-w-0 flex-1">
+              <!-- Compact: title and artist share one line. -->
+              <span
+                class="min-w-0 flex-1"
+                :class="compact && 'flex items-baseline gap-2'"
+              >
                 <span
-                  class="block truncate text-[15px] font-medium leading-snug"
-                  :class="player.isCurrent(track.id) && 'text-accent'"
+                  class="truncate font-medium"
+                  :class="[
+                    compact ? 'min-w-0 shrink text-sm' : 'block text-[15px] leading-snug',
+                    player.isCurrent(track.id) && 'text-accent',
+                  ]"
                 >{{ track.title }}</span>
-                <span class="block truncate text-sm text-muted">{{ track.artist }}</span>
+                <span
+                  class="truncate text-sm text-muted"
+                  :class="compact ? 'min-w-0 shrink-[2]' : 'block'"
+                >{{ track.artist }}</span>
               </span>
             </button>
           </div>
@@ -151,7 +168,8 @@
           <!-- Tempo -->
           <div
             role="cell"
-            class="flex flex-col items-end justify-center gap-0.5 @2xl:flex-row @2xl:items-center @2xl:justify-start @2xl:gap-1.5"
+            class="flex @2xl:flex-row @2xl:items-center @2xl:justify-start @2xl:gap-1.5"
+            :class="compact ? 'flex-row items-center justify-end gap-1' : 'flex-col items-end justify-center gap-0.5'"
           >
             <span
               class="font-mono text-sm tabular"
@@ -189,6 +207,7 @@
               variant="ghost"
               size="sm"
               class="hidden @2xl:inline-flex"
+              :class="compact && 'h-7'"
               :disabled="!canSeed(track)"
               :aria-label="`Mix from ${track.title}`"
               @click="$emit('seed', track)"
@@ -222,6 +241,7 @@ import { formatTempo, canSeed } from '@/lib/trackInfo.js';
 import { cn } from '@/lib/cn.js';
 import { useTrackDrag, readTrackDrag, isTrackDrag } from '@/composables/useTrackDrag.js';
 import { dropIndex } from '@/lib/crates.js';
+import { useDensity } from '@/composables/useDensity.js';
 
 /**
  * One virtualised list that is a table on wide screens and a two-line list on
@@ -244,6 +264,8 @@ const listEl = ref(null);
 const { width } = useElementSize(listEl);
 const wide = computed(() => width.value >= 672); // matches @2xl
 const coarse = useMediaQuery('(pointer: coarse)');
+/** Compact: one text line per row, small artwork — about twice as many tracks on screen. */
+const { compact } = useDensity();
 
 const columns = computed(() =>
   [
@@ -272,7 +294,8 @@ const scrollMargin = ref(0);
 const virtualizer = useWindowVirtualizer(
   computed(() => ({
     count: props.rows.length,
-    estimateSize: () => (wide.value ? 60 : coarse.value ? 68 : 64),
+    estimateSize: () =>
+      compact.value ? (coarse.value ? 44 : 36) : wide.value ? 60 : coarse.value ? 68 : 64,
     overscan: 8,
     scrollMargin: scrollMargin.value,
     getItemKey: (i) => props.rows[i]?.id ?? i,
@@ -286,7 +309,7 @@ function measureMargin() {
 onMounted(measureMargin);
 // Content above the list (seed card, chips) changes height; keep the offset true.
 watch(
-  () => [props.rows.length, props.ordered, filters.activeFilterCount, Boolean(filters.seedTrack), wide.value],
+  () => [props.rows.length, props.ordered, filters.activeFilterCount, Boolean(filters.seedTrack), wide.value, compact.value],
   () => requestAnimationFrame(() => {
     measureMargin();
     virtualizer.value.measure();
