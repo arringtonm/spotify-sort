@@ -126,6 +126,9 @@ export const usePlayerStore = defineStore('player', {
       this.duration = 0;
       this.loadingId = track.id;
       try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          throw new Error('You’re offline — previews need a connection.');
+        }
         let url = track.deezerId ? await getPreviewUrl(track.deezerId) : null;
         if (!url) {
           const match = await resolveDeezer(track);

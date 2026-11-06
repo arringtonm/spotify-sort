@@ -27,7 +27,7 @@ export function useTheme() {
       document.documentElement.classList.toggle('dark', dark);
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', dark ? '#121318' : '#fbfbfd');
+        ?.setAttribute('content', dark ? '#090a0e' : '#f9fafc');
       try {
         localStorage.setItem(STORAGE_KEY, mode.value);
       } catch {

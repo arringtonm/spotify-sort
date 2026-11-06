@@ -14,6 +14,13 @@
       >
         {{ error }}
       </p>
+      <p
+        v-if="standalone"
+        class="rounded-lg bg-surface-2 px-3 py-2 text-sm text-muted"
+      >
+        Using the installed app on iPhone or iPad? If sign-in keeps failing, sign in once from
+        Safari, then reopen the app from your Home Screen.
+      </p>
       <Button
         variant="primary"
         as="RouterLink"
@@ -51,6 +58,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const toasts = useToastStore();
 const error = ref('');
+const standalone =
+  window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 void RouterLink;
 
 onMounted(async () => {

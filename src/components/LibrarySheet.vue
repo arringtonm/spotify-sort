@@ -8,6 +8,17 @@
   >
     <div class="space-y-8">
       <div
+        v-if="!online"
+        role="status"
+        class="flex gap-2 rounded-lg bg-warn-soft px-3 py-2.5 text-sm"
+      >
+        <WifiOff
+          class="mt-0.5 size-4 shrink-0 text-warn"
+          aria-hidden="true"
+        />
+        <span>You're offline. Your library and filters still work; importing and analysing need a connection.</span>
+      </div>
+      <div
         v-if="library.error"
         role="alert"
         class="flex gap-2 rounded-lg bg-danger-soft px-3 py-2.5 text-sm"
@@ -72,7 +83,7 @@
             type="submit"
             variant="primary"
             :loading="library.busy && busyWith === 'link'"
-            :disabled="library.busy"
+            :disabled="library.busy || !online"
           >
             Import {{ parsedLink && !parsedLink.error ? parsedLink.type : 'link' }}
           </Button>
@@ -164,7 +175,7 @@
               title="Liked Songs"
               subtitle="Everything you've saved"
               :loading="library.busy && busyWith === 'saved'"
-              :disabled="library.busy"
+              :disabled="library.busy || !online"
               @run="importSpotify({ source: 'saved' }, 'saved')"
             />
           </div>
@@ -207,7 +218,7 @@
                     :title="p.name"
                     :subtitle="`${p.trackCount} tracks${p.owner ? ` · ${p.owner}` : ''}`"
                     :loading="library.busy && busyWith === p.id"
-                    :disabled="library.busy"
+                    :disabled="library.busy || !online"
                     compact
                     @run="importSpotify({ source: 'playlist', playlistId: p.id }, p.id)"
                   />
@@ -404,7 +415,9 @@ import {
   Trash2,
   CircleAlert,
   CircleCheck,
+  WifiOff,
 } from '@lucide/vue';
+import { useOnline } from '@vueuse/core';
 import Sheet from './ui/Sheet.vue';
 import Button from './ui/Button.vue';
 import Field from './ui/Field.vue';
@@ -427,6 +440,7 @@ const filters = useFiltersStore();
 const auth = useAuthStore();
 const toasts = useToastStore();
 const ui = useUi();
+const online = useOnline();
 
 const SectionTitle = (props, { slots }) =>
   h('h3', { id: props.id, class: 'mb-3 flex items-center gap-2 text-sm font-semibold' }, [

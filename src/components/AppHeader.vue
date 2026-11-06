@@ -30,6 +30,18 @@
 
       <div class="flex-1" />
 
+      <span
+        v-if="!online"
+        class="inline-flex h-8 items-center gap-1.5 rounded-full bg-warn-soft px-3 text-xs font-medium"
+        role="status"
+      >
+        <WifiOff
+          class="size-3.5 text-warn"
+          aria-hidden="true"
+        />
+        Offline
+      </span>
+
       <!-- Analysis progress: compact, always visible while work is happening. -->
       <PopoverRoot v-if="showAnalysis">
         <PopoverTrigger as-child>
@@ -172,7 +184,9 @@ import {
   Moon,
   Sun,
   Monitor,
+  WifiOff,
 } from '@lucide/vue';
+import { useOnline } from '@vueuse/core';
 import Button from './ui/Button.vue';
 import MenuItem from './ui/MenuItem.vue';
 import { floatingPanel } from './ui/menu.js';
@@ -188,6 +202,7 @@ const library = useLibraryStore();
 const auth = useAuthStore();
 const toasts = useToastStore();
 const { mode } = useTheme();
+const online = useOnline();
 
 const themeOptions = [
   { value: 'dark', label: 'Dark', icon: Moon },

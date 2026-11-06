@@ -53,6 +53,43 @@ async function challengeFor(verifier) {
   return base64url(digest);
 }
 
+/**
+ * The PKCE verifier is keyed by `state` in localStorage rather than held in
+ * sessionStorage. On iOS an installed web app can hand the Spotify login to a
+ * separate browser context and get the redirect back in a fresh session, where
+ * sessionStorage is empty. Keying by state still binds the response to the
+ * request (CSRF), and entries expire after ten minutes.
+ */
+const PENDING_KEY = 'spotify-sort.pkce-pending';
+const PENDING_TTL_MS = 10 * 60 * 1000;
+
+function readPending() {
+  try {
+    const all = JSON.parse(localStorage.getItem(PENDING_KEY)) || {};
+    const now = Date.now();
+    return Object.fromEntries(Object.entries(all).filter(([, v]) => now - v.at < PENDING_TTL_MS));
+  } catch {
+    return {};
+  }
+}
+
+function savePending(state, verifier) {
+  const all = readPending();
+  all[state] = { verifier, at: Date.now() };
+  localStorage.setItem(PENDING_KEY, JSON.stringify(all));
+  // Older builds used sessionStorage; clear any leftovers.
+  sessionStorage.removeItem(VERIFIER_KEY);
+  sessionStorage.removeItem(STATE_KEY);
+}
+
+function takePending(state) {
+  const all = readPending();
+  const entry = state ? all[state] : null;
+  if (entry) delete all[state];
+  localStorage.setItem(PENDING_KEY, JSON.stringify(all));
+  return entry?.verifier ?? null;
+}
+
 function readTokens() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null;
@@ -85,7 +122,7 @@ export function isLoggedIn() {
  * common way this flow fails.
  *
  * The subtle one is the origin check. The PKCE verifier and CSRF state live in
- * sessionStorage, which is per-origin — and `http://localhost:5173` and
+ * localStorage, which is per-origin — and `http://localhost:5173` and
  * `http://127.0.0.1:5173` are *different origins*. Browse to one while the
  * redirect URI points at the other and Spotify will happily authorise you, then
  * bounce you to an origin where the verifier does not exist, failing at the last
@@ -131,8 +168,7 @@ export async function buildAuthorizeUrl() {
 
   const verifier = randomString();
   const state = randomString(16);
-  sessionStorage.setItem(VERIFIER_KEY, verifier);
-  sessionStorage.setItem(STATE_KEY, state);
+  savePending(state, verifier);
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -186,16 +222,15 @@ export async function handleRedirect() {
   }
   if (!code) return false;
 
-  const expectedState = sessionStorage.getItem(STATE_KEY);
-  const verifier = sessionStorage.getItem(VERIFIER_KEY);
-  sessionStorage.removeItem(STATE_KEY);
-  sessionStorage.removeItem(VERIFIER_KEY);
+  const verifier = takePending(returnedState);
   scrubUrl(url);
 
-  if (!expectedState || returnedState !== expectedState) {
-    throw new Error('OAuth state mismatch — aborting.');
+  if (!verifier) {
+    throw new Error(
+      'This sign-in was started somewhere else (another tab, or Safari instead of the ' +
+        'installed app), so it can’t be finished here. Start the sign-in again from this window.'
+    );
   }
-  if (!verifier) throw new Error('Missing PKCE verifier — start the login again.');
 
   writeTokens(
     await postToken({

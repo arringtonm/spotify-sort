@@ -9,6 +9,7 @@
     <NowPlayingBar />
     <LibrarySheet v-model:open="ui.libraryOpen.value" />
     <AppToaster />
+    <UpdatePrompt />
   </TooltipProvider>
 </template>
 
@@ -21,6 +22,7 @@ import AppHeader from './components/AppHeader.vue';
 import NowPlayingBar from './components/NowPlayingBar.vue';
 import LibrarySheet from './components/LibrarySheet.vue';
 import AppToaster from './components/AppToaster.vue';
+import UpdatePrompt from './components/UpdatePrompt.vue';
 import { usePlayerStore } from './stores/player.js';
 import { useToastStore } from './stores/toasts.js';
 import { useUi } from './composables/useUi.js';
@@ -39,6 +41,15 @@ watchEffect(() => {
 // Links handed over via /import (share target) arrive as ?link=.
 const route = useRoute();
 const router = useRouter();
+watch(
+  () => route.query.library,
+  (open) => {
+    if (!open) return;
+    ui.libraryOpen.value = true;
+    router.replace({ query: {} });
+  },
+  { immediate: true }
+);
 watch(
   () => route.query.link,
   (link) => {

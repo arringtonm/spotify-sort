@@ -37,6 +37,7 @@ import {
 import { downloadCsv } from '../lib/exportFormats.js';
 import { useOverridesStore } from './overrides.js';
 import { useAuthStore } from './auth.js';
+import { requestPersistence } from '../services/storage.js';
 
 /** The 2022 snapshot: signed-out demo, test fixture, and analyser validation set. */
 const DEMO = demoTracks.map((t) => ({
@@ -151,7 +152,9 @@ export const useLibraryStore = defineStore('library', {
       this.error = '';
       this.warning = '';
       try {
-        return await run();
+        const result = await run();
+        if (this.origin !== 'demo') requestPersistence();
+        return result;
       } catch (error) {
         this.error = error.message || String(error);
         // A dead refresh token means every Spotify control would now fail.

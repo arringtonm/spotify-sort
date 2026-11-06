@@ -31,13 +31,16 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "4.3.3",
+    "@vite-pwa/assets-generator": "2.0.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "eslint": "^10.9.1",
     "eslint-plugin-vue": "^10.10.0",
     "globals": "^17.11.0",
     "mpg123-decoder": "^1.0.3",
     "tailwindcss": "4.3.3",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vite-plugin-pwa": "2.0.0",
+    "workbox-window": "7.4.1"
   },
   "browserslist": [
     "> 1%",
