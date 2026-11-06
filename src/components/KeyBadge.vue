@@ -1,26 +1,36 @@
 <template>
   <span
     v-if="code"
-    class="inline-flex h-6 items-center gap-1 rounded-md px-1.5 font-mono text-[13px] font-semibold tabular"
-    :class="uncertain ? 'border border-dashed border-border-strong text-muted' : 'text-[oklch(0.18_0.02_270)]'"
-    :style="uncertain ? null : { background: keyColor(code) }"
+    class="inline-flex items-center gap-1.5"
     :title="title"
   >
-    {{ code }}
     <span
-      v-if="track.keySource === 'manual'"
-      aria-hidden="true"
-    ><PenLine class="size-3" /></span>
+      class="inline-flex h-6 items-center gap-1 rounded-md px-1.5 font-mono text-[13px] font-semibold tabular"
+      :class="uncertain ? 'border border-dashed border-border-strong text-muted' : 'text-[oklch(0.18_0.02_270)]'"
+      :style="uncertain ? null : { background: keyColor(code) }"
+    >
+      {{ code }}
+      <span
+        v-if="track.keySource === 'manual'"
+        aria-hidden="true"
+      ><PenLine class="size-3" /></span>
+      <span
+        v-else-if="uncertain && confidence?.percent == null"
+        aria-hidden="true"
+      >?</span>
+      <span
+        v-else-if="estimated && !uncertain"
+        aria-hidden="true"
+        class="opacity-60"
+      >~</span>
+    </span>
+    <!-- Confidence sits beside the pill, not in it: the pill is the key, the
+         number is how much to trust it. -->
     <span
-      v-else-if="uncertain"
+      v-if="uncertain && confidence?.percent != null"
+      class="text-[11px] font-medium text-subtle tabular"
       aria-hidden="true"
-      class="font-sans text-[11px] font-medium"
-    >{{ confidence?.percent != null ? `${confidence.percent}%` : '?' }}</span>
-    <span
-      v-else-if="estimated"
-      aria-hidden="true"
-      class="opacity-60"
-    >~</span>
+    >{{ confidence.percent }}%</span>
     <span class="sr-only">{{ srText }}</span>
   </span>
   <span

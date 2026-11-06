@@ -40,7 +40,7 @@
           </div>
           <div class="flex gap-3">
             <dt class="w-20 shrink-0">
-              <span class="inline-flex h-6 items-center gap-1 rounded-md border border-dashed border-border-strong px-1.5 font-mono text-[13px] font-semibold text-muted">8A <span class="font-sans text-[11px] font-medium">34%</span></span>
+              <span class="inline-flex items-center gap-1.5"><span class="inline-flex h-6 items-center rounded-md border border-dashed border-border-strong px-1.5 font-mono text-[13px] font-semibold text-muted">8A</span><span class="text-[11px] font-medium text-subtle">34%</span></span>
             </dt>
             <dd class="text-muted">
               Low-confidence estimate, with how likely it is to be exactly right (it's often a neighbouring key). You can still mix from it; uncertain keys are suggested after confident ones.
