@@ -34,12 +34,13 @@
         >
           <Field
             v-slot="{ id, describedBy, invalid }"
-            label="Playlist link"
+            label="Playlist, album or track link"
             :hint="linkHint"
             :error="linkError"
           >
             <TextInput
               :id="id"
+              ref="linkInput"
               v-model="link"
               type="url"
               inputmode="url"
@@ -54,13 +55,26 @@
               @blur="touchedLink = Boolean(link)"
             />
           </Field>
+          <p
+            v-if="parsedLink && !parsedLink.error"
+            class="flex items-center gap-2 text-sm text-muted"
+          >
+            <CircleCheck
+              class="size-4 text-ok"
+              aria-hidden="true"
+            />
+            {{ parsedLink.provider === 'deezer' ? 'Deezer' : 'Spotify' }} {{ parsedLink.type }}
+            <template v-if="usesEmbed">
+              · read from Spotify's public page (unofficial)
+            </template>
+          </p>
           <Button
             type="submit"
             variant="primary"
             :loading="library.busy && busyWith === 'link'"
             :disabled="library.busy"
           >
-            Import playlist
+            Import {{ parsedLink && !parsedLink.error ? parsedLink.type : 'link' }}
           </Button>
         </form>
       </section>
@@ -364,7 +378,7 @@
 </template>
 
 <script setup>
-import { computed, ref, h } from 'vue';
+import { computed, ref, h, watch } from 'vue';
 import {
   AlertDialogRoot,
   AlertDialogPortal,
@@ -389,6 +403,7 @@ import {
   Upload,
   Trash2,
   CircleAlert,
+  CircleCheck,
 } from '@lucide/vue';
 import Sheet from './ui/Sheet.vue';
 import Button from './ui/Button.vue';
@@ -400,7 +415,9 @@ import { useLibraryStore } from '@/stores/library.js';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useToastStore } from '@/stores/toasts.js';
-import { parsePlaylistRef } from '@/services/spotifyApi.js';
+import { EMBED_PROXY } from '@/services/spotifyApi.js';
+import { parseSourceLink } from '@/lib/sourceLinks.js';
+import { useUi } from '@/composables/useUi.js';
 
 defineProps({ open: Boolean });
 const emit = defineEmits(['update:open']);
@@ -409,6 +426,7 @@ const library = useLibraryStore();
 const filters = useFiltersStore();
 const auth = useAuthStore();
 const toasts = useToastStore();
+const ui = useUi();
 
 const SectionTitle = (props, { slots }) =>
   h('h3', { id: props.id, class: 'mb-3 flex items-center gap-2 text-sm font-semibold' }, [
@@ -422,16 +440,25 @@ const showDevNotes = import.meta.env.DEV || !auth.diagnostics.originMatches;
 
 // ---- Link import -----------------------------------------------------------
 const link = ref('');
+const linkInput = ref(null);
 const touchedLink = ref(false);
 const submittedLink = ref(false);
-const linkHint = 'In Spotify: Share → Copy link to playlist, then paste it here.';
+const linkHint =
+  'Spotify or Deezer. In the app: Share → Copy link, then paste it here.';
+const parsedLink = computed(() => (link.value.trim() ? parseSourceLink(link.value) : null));
+const usesEmbed = computed(
+  () =>
+    parsedLink.value?.provider === 'spotify' &&
+    !auth.signedIn &&
+    Boolean(EMBED_PROXY)
+);
 const linkError = computed(() => {
   if (!(touchedLink.value || submittedLink.value)) return '';
-  if (!link.value.trim()) return submittedLink.value ? 'Paste a playlist link first.' : '';
-  if (!parsePlaylistRef(link.value)) {
-    return "That doesn't look like a Spotify playlist link. It should start with https://open.spotify.com/playlist/";
+  if (!link.value.trim()) return submittedLink.value ? 'Paste a link first.' : '';
+  if (parsedLink.value?.error) return parsedLink.value.error;
+  if (parsedLink.value?.provider === 'spotify' && !auth.signedIn && !EMBED_PROXY) {
+    return 'Sign in with Spotify below to import Spotify links, or paste a Deezer link — those work without signing in.';
   }
-  if (!auth.signedIn) return 'Sign in with Spotify below to import playlists.';
   return '';
 });
 
@@ -439,13 +466,33 @@ async function importLink() {
   submittedLink.value = true;
   touchedLink.value = true;
   if (linkError.value) return;
-  await importSpotify({ source: 'uri', playlistRef: link.value }, 'link');
-  if (!library.error) {
+  busyWith.value = 'link';
+  try {
+    await library.importFromLink(link.value);
+    filters.resetAll();
+    announce();
     link.value = '';
     submittedLink.value = false;
     touchedLink.value = false;
+    emit('update:open', false);
+  } catch {
+    /* shown inline via library.error */
+  } finally {
+    busyWith.value = null;
   }
 }
+
+// Links arriving from the share target, a paste, or /import?url=.
+watch(
+  () => ui.pendingLink.value,
+  (text) => {
+    if (!text) return;
+    link.value = text;
+    ui.pendingLink.value = '';
+    importLink();
+  },
+  { immediate: true }
+);
 
 // ---- Spotify ---------------------------------------------------------------
 async function signIn() {

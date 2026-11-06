@@ -7,7 +7,15 @@ import {
   getArtistGenres,
   exportPlaylist,
   parsePlaylistRef,
+  getPlaylistAccess,
+  getAlbumTracks,
+  getTrack,
+  getEmbedTracks,
+  EMBED_PROXY,
+  signedIn as spotifySignedIn,
 } from '../services/spotifyApi.js';
+import { getDeezerCollection } from '../services/deezer.js';
+import { parseSourceLink } from '../lib/sourceLinks.js';
 import {
   putTracks,
   getAllTracks,
@@ -45,6 +53,9 @@ export const useLibraryStore = defineStore('library', {
     // render it. Every mutation is written through, never held only here.
     raw: DEMO,
     origin: 'demo',
+    // { name, provider, type, url } for link imports, so the header can say what
+    // this library actually is.
+    originDetail: null,
     hydrated: false,
     busy: false,
     progress: null,
@@ -64,12 +75,14 @@ export const useLibraryStore = defineStore('library', {
     },
     isDemo: (state) => state.origin === 'demo',
     originLabel: (state) =>
+      state.originDetail?.name ??
       ({
         demo: 'Sample library',
         spotify: 'Spotify',
         rekordbox: 'Rekordbox',
         traktor: 'Traktor',
         csv: 'CSV import',
+        link: 'Imported link',
       })[state.origin] ?? state.origin,
     total: (state) => state.raw.length,
     /** Work still outstanding — drives the Resume affordance. */
@@ -91,7 +104,9 @@ export const useLibraryStore = defineStore('library', {
         const stored = await getAllTracks();
         if (stored.length) {
           this.raw = stored;
-          this.origin = (await getMeta('library'))?.origin ?? 'spotify';
+          const meta = await getMeta('library');
+          this.origin = meta?.origin ?? 'spotify';
+          this.originDetail = meta?.detail ?? null;
           await this.refreshCounts();
           const { pending, failed, unavailable } = this.counts;
           const outstanding = pending + failed;
@@ -118,6 +133,7 @@ export const useLibraryStore = defineStore('library', {
     async reset() {
       this.raw = DEMO;
       this.origin = 'demo';
+      this.originDetail = null;
       this.summary = '';
       this.error = '';
       this.warning = '';
@@ -190,12 +206,120 @@ export const useLibraryStore = defineStore('library', {
         await setMeta('library', { origin: 'spotify', at: Date.now() });
         this.raw = await getAllTracks();
         this.origin = 'spotify';
+        this.originDetail = null;
         await this.refreshCounts();
 
         this.explainImport({ merge, total, skipped, complete, failure });
         await this.analyse(selectPending(this.raw));
         return this.raw;
       });
+    },
+
+    /**
+     * Import whatever a pasted or shared link points at: Spotify or Deezer
+     * playlists, albums and tracks.
+     *
+     * Spotify playlists the user doesn't own can't be read through the API in
+     * development mode, so those (and everything, when signed out) go through the
+     * public embed page via a proxy, if one is configured.
+     */
+    async importFromLink(text) {
+      const ref = parseSourceLink(text);
+      if (ref.error) throw new Error(ref.error);
+
+      return this.withBusy(async () => {
+        const onFetch = ({ loaded, total }) =>
+          this.setProgress(
+            `Loading tracks — ${loaded}${total ? ` of ${total}` : ''}`,
+            loaded,
+            total ?? 0
+          );
+        this.setProgress('Opening link…', 0, 0);
+
+        let report;
+        if (ref.provider === 'deezer') {
+          report = await getDeezerCollection(ref.type, ref.id, onFetch);
+        } else {
+          report = await this.fetchSpotifyLink(ref, onFetch);
+        }
+
+        const { tracks } = report;
+        if (!tracks.length) {
+          throw new Error(report.failure || 'That link has no tracks we can import.');
+        }
+
+        if (spotifySignedIn()) {
+          const known = new Map(this.raw.map((t) => [t.id, t]));
+          const needGenres = tracks.filter(
+            (t) => t.artistIds?.length && !known.get(t.id)?.genres?.length
+          );
+          await this.attachGenres(needGenres).catch(() => {});
+        }
+
+        const merge = await putTracks(tracks);
+        const detail = {
+          name: report.name ?? `${ref.provider === 'deezer' ? 'Deezer' : 'Spotify'} ${ref.type}`,
+          provider: ref.provider,
+          type: ref.type,
+          url: ref.url,
+        };
+        await setMeta('library', { origin: 'link', detail, at: Date.now() });
+        this.raw = await getAllTracks();
+        this.origin = 'link';
+        this.originDetail = detail;
+        await this.refreshCounts();
+
+        this.explainImport({
+          merge,
+          total: report.total,
+          skipped: report.skipped ?? 0,
+          complete: report.complete,
+          failure: report.failure,
+        });
+        if (report.unofficial) {
+          this.summary +=
+            ' Read from Spotify’s public embed page, which can be incomplete for long playlists.';
+          if (report.total && tracks.length < report.total) {
+            this.warning = `Loaded the first ${tracks.length} of ${report.total} tracks.`;
+          }
+        }
+        await this.analyse(selectPending(this.raw));
+        return this.raw;
+      });
+    },
+
+    async fetchSpotifyLink(ref, onFetch) {
+      const signed = spotifySignedIn();
+      const viaEmbed = async (reason) => {
+        if (!EMBED_PROXY) throw new Error(reason);
+        return getEmbedTracks(ref.type, ref.id);
+      };
+
+      if (!signed) {
+        return viaEmbed(
+          'Sign in with Spotify to import Spotify links, or paste a Deezer link — those work without signing in.'
+        );
+      }
+      if (ref.type === 'track') return getTrack(ref.id);
+      if (ref.type === 'album') return getAlbumTracks(ref.id, onFetch);
+
+      // Playlist: owned or collaborative ones come through the API with ISRCs.
+      let access = null;
+      try {
+        access = await getPlaylistAccess(ref.id);
+      } catch (error) {
+        if (error.status !== 404 && error.status !== 403) throw error;
+      }
+      if (access?.readable) {
+        const report = await getPlaylistTracks(ref.id, onFetch);
+        return { ...report, name: access.name };
+      }
+      const page = await viaEmbed(
+        access
+          ? `Spotify only shares the tracks of playlists you own or collaborate on, and “${access.name}” isn't one of yours. In Spotify, add its songs to a playlist of your own, or paste a Deezer link instead.`
+          : 'Spotify would not return that playlist — playlists made by Spotify itself aren’t available to apps like this. Try a Deezer link instead.'
+      );
+      return { ...page, name: page.name ?? access?.name };
     },
 
     /** Say plainly what was imported, reused, and skipped. */
@@ -323,6 +447,7 @@ export const useLibraryStore = defineStore('library', {
         await setMeta('library', { origin: format, at: Date.now() });
         this.raw = await getAllTracks();
         this.origin = format;
+        this.originDetail = null;
         await this.refreshCounts();
 
         this.summary =

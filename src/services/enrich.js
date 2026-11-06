@@ -59,7 +59,12 @@ async function decodePreview(url) {
 }
 
 export async function analyseTrack(track) {
-  const match = await resolveDeezer(track);
+  let match = await resolveDeezer(track);
+  // Tracks read from Spotify's embed page carry their own 30s preview; use it
+  // when Deezer has no match.
+  if ((!match || !match.preview) && track.previewUrl) {
+    match = { ...(match ?? { deezerId: null, isrc: track.isrc ?? null, bpm: null }), preview: track.previewUrl };
+  }
   if (!match) return { id: track.id, status: 'no-match', enrichedAt: Date.now() };
 
   const base = { id: track.id, isrc: match.isrc, deezerId: match.deezerId, enrichedAt: Date.now() };

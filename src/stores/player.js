@@ -131,6 +131,7 @@ export const usePlayerStore = defineStore('player', {
           const match = await resolveDeezer(track);
           url = match?.preview ?? null;
         }
+        url = url || track.previewUrl || null;
         if (!url) throw new Error('No preview available for this track.');
         // A later press may have superseded this one while we were resolving.
         if (this.loadingId !== track.id) return;

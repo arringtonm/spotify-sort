@@ -1,4 +1,5 @@
-import { getAccessToken } from './spotifyAuth.js';
+import { getAccessToken, isLoggedIn } from './spotifyAuth.js';
+import { extractEmbedTracks } from '../lib/spotifyEmbed.js';
 
 const API = 'https://api.spotify.com/v1';
 
@@ -189,6 +190,112 @@ export async function getPlaylistTracks(playlistId, onProgress) {
     return paginate(`/playlists/${playlistId}/tracks?limit=50`, onProgress);
   }
   return report;
+}
+
+let me = null;
+async function currentUserId() {
+  if (!me) me = await request('/me');
+  return me.id;
+}
+
+/**
+ * Playlist metadata plus whether the API will hand over its tracks. Development
+ * mode only returns items for playlists the user owns or collaborates on.
+ */
+export async function getPlaylistAccess(playlistId) {
+  const meta = await request(
+    `/playlists/${playlistId}?fields=name,collaborative,owner(id,display_name),images`
+  );
+  const owned = meta.owner?.id && meta.owner.id === (await currentUserId().catch(() => null));
+  return {
+    name: meta.name ?? null,
+    owner: meta.owner?.display_name ?? null,
+    readable: Boolean(owned || meta.collaborative),
+  };
+}
+
+/**
+ * Album tracks come back "simplified": no album object and no ISRC. The album
+ * fields are filled in from the parent, and ISRCs are looked up one by one for
+ * small albums (Spotify removed the batch /tracks endpoint in Feb 2026). Larger
+ * albums fall back to Deezer's artist+title search during analysis.
+ */
+export async function getAlbumTracks(albumId, onProgress, { isrcLimit = 30 } = {}) {
+  const album = await request(`/albums/${albumId}`);
+  const rows = [...(album.tracks?.items ?? [])];
+  let next = album.tracks?.next;
+  while (next) {
+    const page = await request(next.replace(API, ''));
+    rows.push(...(page.items ?? []));
+    next = page.next;
+  }
+
+  const parent = { name: album.name, images: album.images };
+  const tracks = rows.map((row) => normaliseTrack({ ...row, album: parent })).filter(Boolean);
+
+  if (tracks.length <= isrcLimit) {
+    let done = 0;
+    for (const track of tracks) {
+      const full = await request(`/tracks/${track.id}`).catch(() => null);
+      track.isrc = full?.external_ids?.isrc ?? null;
+      done += 1;
+      onProgress?.({ loaded: done, total: tracks.length });
+    }
+  }
+  return {
+    name: `${(album.artists || []).map((a) => a.name).join(', ')} – ${album.name}`,
+    tracks,
+    total: album.total_tracks ?? tracks.length,
+    skipped: rows.length - tracks.length,
+    complete: true,
+  };
+}
+
+export async function getTrack(trackId) {
+  const track = normaliseTrack(await request(`/tracks/${trackId}`));
+  if (!track) throw new Error('Spotify could not find that track.');
+  return { name: `${track.artist} – ${track.title}`, tracks: [track], total: 1, complete: true };
+}
+
+/**
+ * The unofficial route: read a public embed page through a proxy (the page sends
+ * no CORS headers). In development Vite proxies /spotify-embed; in production
+ * VITE_EMBED_PROXY_URL points at the Cloudflare Worker in proxy/.
+ */
+export const EMBED_PROXY =
+  import.meta.env.VITE_EMBED_PROXY_URL || (import.meta.env.DEV ? '/spotify-embed' : '');
+
+export async function getEmbedTracks(type, id) {
+  if (!EMBED_PROXY) throw new Error('No embed proxy configured.');
+  const response = await fetch(`${EMBED_PROXY.replace(/\/$/, '')}/${type}/${id}`);
+  if (response.status === 404) {
+    throw new Error("Spotify couldn't find that link. Check that it's public.");
+  }
+  if (!response.ok) throw new Error(`Couldn't read the public Spotify page (${response.status}).`);
+  const isJson = (response.headers.get('content-type') || '').includes('json');
+  const page = isJson ? await response.json() : extractEmbedTracks(await response.text());
+  const tracks = page.tracks.map((t) => ({
+    id: t.id,
+    uri: t.uri,
+    artist: t.artist,
+    artistIds: [],
+    title: t.title,
+    album: null,
+    artwork: null,
+    isrc: null,
+    durationMs: t.durationMs,
+    previewUrl: t.previewUrl ?? null,
+    genres: [],
+    tempo: null,
+    pitchClass: null,
+    key: null,
+    mode: null,
+  }));
+  return { name: page.name, owner: page.owner, tracks, total: null, complete: true, unofficial: true };
+}
+
+export function signedIn() {
+  return isLoggedIn();
 }
 
 /** Accept a playlist URL, a spotify: URI, or a bare ID. */

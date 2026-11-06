@@ -12,6 +12,18 @@ export default createRouter({
   routes: [
     { path: '/', name: 'library', component: LibraryView },
     { path: '/callback', name: 'callback', component: CallbackView },
+    // Share target and deep links: /import?url=… (or text=… from Android's share
+    // sheet, which often puts the link inside the text).
+    {
+      path: '/import',
+      name: 'import',
+      redirect: (to) => {
+        const candidate = [to.query.url, to.query.text, to.query.title]
+          .filter(Boolean)
+          .join(' ');
+        return { path: '/', query: candidate ? { link: candidate } : {} };
+      },
+    },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });

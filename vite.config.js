@@ -15,5 +15,14 @@ export default defineConfig({
     // as of 27 Nov 2025, so the dev origin has to match what we register.
     host: '127.0.0.1',
     port: 5173,
+    // Development stand-in for proxy/ (the Cloudflare Worker): Spotify's public
+    // embed pages send no CORS headers, so the browser can't read them directly.
+    proxy: {
+      '/spotify-embed': {
+        target: 'https://open.spotify.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/spotify-embed/, '/embed'),
+      },
+    },
   },
 });
