@@ -48,6 +48,7 @@
           <Field
             v-slot="{ id, describedBy, invalid }"
             label="Playlist, album or track link"
+            :lines="3"
             :hint="linkHint"
             :error="linkError"
           >
@@ -69,16 +70,18 @@
             />
           </Field>
           <p
-            v-if="parsedLink && !parsedLink.error"
-            class="flex items-center gap-2 text-sm text-muted"
+            class="flex min-h-5 items-center gap-2 text-sm text-muted"
+            aria-live="polite"
           >
-            <CircleCheck
-              class="size-4 text-ok"
-              aria-hidden="true"
-            />
-            {{ parsedLink.provider === 'deezer' ? 'Deezer' : 'Spotify' }} {{ parsedLink.type }}
-            <template v-if="usesEmbed">
-              · read from Spotify's public page (unofficial)
+            <template v-if="parsedLink && !parsedLink.error">
+              <CircleCheck
+                class="size-4 text-ok"
+                aria-hidden="true"
+              />
+              {{ parsedLink.provider === 'deezer' ? 'Deezer' : 'Spotify' }} {{ parsedLink.type }}
+              <template v-if="usesEmbed">
+                · read from Spotify's public page (unofficial)
+              </template>
             </template>
           </p>
           <Button

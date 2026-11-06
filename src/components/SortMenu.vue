@@ -8,7 +8,7 @@
         :aria-label="`Sort: ${current}`"
       >
         <ArrowUpDown />
-        <span class="hidden sm:inline">{{ current }}</span>
+        <span class="hidden w-24 truncate text-left sm:inline">{{ shortLabel }}</span>
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuPortal>
@@ -107,6 +107,15 @@ const current = computed(() => {
   if (field.key === 'match') return field.label;
   const dir = directions.value.find((d) => d.value === filters.sort.direction);
   return `${field.label}: ${dir.label}`;
+});
+
+/** Short, near-constant-width label for the toolbar; the menu holds the detail. */
+const shortLabel = computed(() => {
+  if (filters.ordered) return 'Play order';
+  const field = fields.value.find((f) => f.key === filters.sort.key);
+  if (!field) return 'Sort';
+  if (field.key === 'match') return 'Best match';
+  return `${field.label} ${filters.sort.direction === 'asc' ? '↑' : '↓'}`;
 });
 
 const itemClass =

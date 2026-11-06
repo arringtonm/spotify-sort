@@ -48,7 +48,7 @@
         </div>
         <Button
           variant="secondary"
-          class="lg:hidden"
+          class="relative lg:hidden"
           :aria-label="`Filters${filters.activeFilterCount ? `, ${filters.activeFilterCount} active` : ''}`"
           @click="filtersOpen = true"
         >
@@ -56,7 +56,7 @@
           <span class="hidden sm:inline">Filters</span>
           <span
             v-if="filters.activeFilterCount"
-            class="flex size-5 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg tabular"
+            class="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg ring-2 ring-bg tabular"
           >{{ filters.activeFilterCount }}</span>
         </Button>
         <SortMenu />
@@ -98,16 +98,16 @@
 
         <SeedCard />
 
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div class="flex min-w-0 items-center gap-x-4">
           <h1
             id="results-heading"
-            class="text-sm text-muted"
+            class="shrink-0 text-sm text-muted"
             aria-live="polite"
           >
             <strong class="font-semibold text-text tabular">{{ filters.rows.length.toLocaleString() }}</strong>
             {{ filters.ordered ? 'tracks in this set' : filters.seedTrack ? 'compatible tracks' : `of ${library.total.toLocaleString()} tracks` }}
           </h1>
-          <AppliedFilters />
+          <AppliedFilters class="flex-1" />
         </div>
       </div>
 

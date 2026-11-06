@@ -12,21 +12,34 @@
       :described-by="describedBy"
       :invalid="Boolean(error)"
     />
-    <p
-      v-if="error"
-      :id="`${id}-error`"
-      class="flex items-start gap-1.5 text-sm text-danger"
-      role="alert"
+    <!--
+      Hint and error share one grid cell, and the cell reserves `lines` of
+      height up front. An error appearing (or replacing the hint) never pushes
+      the rest of the form down.
+    -->
+    <div
+      v-if="lines > 0 || hint || error"
+      class="grid text-xs leading-5"
+      :style="{ minHeight: `${lines * 1.25}rem` }"
     >
-      {{ error }}
-    </p>
-    <p
-      v-else-if="hint"
-      :id="`${id}-hint`"
-      class="text-xs text-muted"
-    >
-      {{ hint }}
-    </p>
+      <p
+        v-if="hint"
+        :id="`${id}-hint`"
+        class="text-muted [grid-area:1/1]"
+        :class="error && 'invisible'"
+        :aria-hidden="error ? 'true' : undefined"
+      >
+        {{ hint }}
+      </p>
+      <p
+        v-if="error"
+        :id="`${id}-error`"
+        class="font-medium text-danger [grid-area:1/1]"
+        role="alert"
+      >
+        {{ error }}
+      </p>
+    </div>
   </div>
 </template>
 
@@ -39,6 +52,8 @@ const props = defineProps({
   hint: { type: String, default: '' },
   error: { type: String, default: '' },
   optional: Boolean,
+  /** Lines of message space to reserve, so errors don't shift the layout. */
+  lines: { type: Number, default: 1 },
 });
 const id = useId();
 const describedBy = computed(() =>

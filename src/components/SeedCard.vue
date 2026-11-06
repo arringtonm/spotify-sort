@@ -118,7 +118,7 @@
     </div>
 
     <p
-      class="mt-4 text-sm text-muted"
+      class="mt-4 min-h-15 text-sm leading-5 text-muted sm:min-h-10"
       aria-live="polite"
     >
       <template v-if="filters.setMode">

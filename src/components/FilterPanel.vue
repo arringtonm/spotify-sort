@@ -47,14 +47,16 @@
           :center-value="filters.selectedCodes.length"
           center-label="keys"
         />
-        <div class="mt-3 flex flex-wrap gap-2">
+        <!-- Fixed set of buttons (never added/removed) and one reserved
+             status line, so toggling keys never moves anything below. -->
+        <div class="mt-3 grid grid-cols-3 gap-2">
           <Button
             size="sm"
             variant="secondary"
             :disabled="filters.allKeysSelected"
             @click="filters.selectAllKeys()"
           >
-            Select all
+            All
           </Button>
           <Button
             size="sm"
@@ -65,19 +67,19 @@
             Clear
           </Button>
           <Button
-            v-if="filters.selectedCodes.length === 1"
             size="sm"
             variant="outline"
+            :disabled="filters.selectedCodes.length !== 1"
             @click="filters.selectCompatibleWith(filters.selectedCodes[0])"
           >
-            <Plus /> Compatible with {{ filters.selectedCodes[0] }}
+            <Plus /> Mixable
           </Button>
         </div>
         <p
-          v-if="filters.selectedCodes.length !== 1 && filters.allKeysSelected"
-          class="mt-2 text-xs text-muted"
+          class="mt-2 min-h-10 text-xs leading-5 text-muted"
+          aria-live="polite"
         >
-          Tip: clear, then tap one key to add its harmonic neighbours.
+          {{ keyHint }}
         </p>
       </section>
 
@@ -98,6 +100,7 @@
           <Field
             v-slot="{ id }"
             label="Min"
+            :lines="0"
           >
             <TextInput
               :id="id"
@@ -113,6 +116,7 @@
           <Field
             v-slot="{ id }"
             label="Max"
+            :lines="0"
           >
             <TextInput
               :id="id"
@@ -207,6 +211,24 @@ import { useLibraryStore } from '@/stores/library.js';
 import { codeFor, formatTempo } from '@/lib/trackInfo.js';
 
 const GENRE_LIMIT = 12;
+
+/** One sentence for the current key selection; always present, so no shift. */
+const keyHint = computed(() => {
+  const codes = filters.selectedCodes;
+  if (filters.allKeysSelected) return 'Tip: tap Clear, then tap one key and “Mixable” to add the keys that mix with it.';
+  if (!codes.length) {
+    return filters.includeUnknown
+      ? 'No keys selected — only tracks without a key are showing.'
+      : 'No keys selected, so nothing matches. Tap a key to add it.';
+  }
+  if (codes.length === 1) {
+    const n = Number(codes[0].slice(0, -1));
+    const letter = codes[0].slice(-1);
+    const wrap = (x) => ((x - 1 + 12) % 12) + 1;
+    return `“Mixable” adds ${wrap(n - 1)}${letter}, ${wrap(n + 1)}${letter} and ${n}${letter === 'A' ? 'B' : 'A'} — the keys that mix with ${codes[0]}.`;
+  }
+  return `${codes.length} keys selected. Tap a key to add or remove it.`;
+});
 
 const filters = useFiltersStore();
 const library = useLibraryStore();
