@@ -21,6 +21,9 @@ import { patchTracks, PENDING, DONE, FAILED, UNAVAILABLE, MAX_ATTEMPTS } from '.
 
 const FLUSH_EVERY = 10;
 
+/** Outcomes worth remembering across runs; transient failures are not. */
+const CACHEABLE = new Set(['ok', 'partial', 'no-match', 'no-preview']);
+
 /** Map an analysis outcome onto a durable per-track state. */
 function stateFor(entry, attempts) {
   switch (entry?.status) {
@@ -86,11 +89,14 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
           cursor += 1;
           const attempts = (track.attempts ?? 0) + 1;
 
+          // A cached failure is not a result: replaying it would make "Retry failed"
+          // a no-op. Only definitive outcomes are cached and reused.
           let entry = cached.get(track.id) ?? null;
+          if (entry && !CACHEABLE.has(entry.status)) entry = null;
           if (!entry) {
             try {
               entry = await analyseTrack(track);
-              await putEntry(entry).catch(() => {});
+              if (CACHEABLE.has(entry.status)) await putEntry(entry).catch(() => {});
             } catch (error) {
               entry = { id: track.id, status: 'failed', error: String(error?.message || error) };
             }

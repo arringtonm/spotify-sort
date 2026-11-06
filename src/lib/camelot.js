@@ -93,6 +93,9 @@ export function tempoRelation(seedTempo, trackTempo, tolerance = 3) {
  * mixes, not just the first hop.
  */
 export function buildSet(tracks, seed, { length = 10, bpmTolerance = 3, direction = 1 } = {}) {
+  // Anything other than a clear ramp means "hold". An empty toggle used to
+  // arrive as undefined and silently wound the set down.
+  direction = direction > 0 ? 1 : direction < 0 ? -1 : 0;
   const used = new Set([seed.id]);
   const path = [{ track: seed, relation: 'seed' }];
   let current = seed;

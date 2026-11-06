@@ -41,6 +41,14 @@ export const useOverridesStore = defineStore('overrides', {
         tempo: tempo == null || tempo === '' ? null : Number(tempo),
         at: Date.now(),
       };
+      // An override with nothing in it would still mark the track as corrected.
+      if (entry.pitchClass == null && entry.tempo == null) {
+        await this.clear(id);
+        return null;
+      }
+      if (entry.tempo != null && !(entry.tempo >= 40 && entry.tempo <= 250)) {
+        throw new RangeError('Tempo must be between 40 and 250 BPM.');
+      }
       this.entries = new Map(this.entries).set(id, entry);
       await putOverride(entry).catch(() => {});
       return entry;

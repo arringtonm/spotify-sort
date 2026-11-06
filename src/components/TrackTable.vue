@@ -15,6 +15,7 @@
     multi-sort
     density="compact"
     fixed-header
+    @update:sort-by="onSortBy"
   >
     <template #[`item.position`]="{ item }">
       <span class="position">{{ item.position }}</span>
@@ -211,6 +212,10 @@ export default {
   },
 
   methods: {
+    /** Two-way: Vuetify owns the header clicks, we own the state. */
+    onSortBy(value) {
+      if (!this.ordered) this.userSortBy = value;
+    },
     formatDuration,
 
     /**

@@ -189,3 +189,16 @@ test('8B is C major and 8A is A minor', () => {
   assert.deepEqual(fromCamelotCode('8B'), { pitchClass: 0, mode: 'maj' });
   assert.deepEqual(fromCamelotCode('8a'), { pitchClass: 9, mode: 'min' });
 });
+
+test('buildSet treats a missing direction as hold, not wind-down', async () => {
+  const { buildSet } = await import('../src/lib/camelot.js');
+  const seed = { id: 's', pitchClass: 0, mode: 'maj', tempo: 124 };
+  const tracks = [
+    seed,
+    { id: 'down', pitchClass: 0, mode: 'maj', tempo: 122 },
+    { id: 'up', pitchClass: 0, mode: 'maj', tempo: 125 },
+  ];
+  const path = buildSet(tracks, seed, { length: 2, direction: undefined });
+  // Hold picks the smallest step regardless of direction: 125 is 1 away, 122 is 2.
+  assert.equal(path[1].track.id, 'up');
+});

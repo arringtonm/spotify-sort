@@ -34,7 +34,8 @@
             variant="outlined"
             density="compact"
             clearable
-            hide-details
+            :error-messages="tempoError"
+            :hide-details="!tempoError"
           />
         </div>
 
@@ -99,7 +100,7 @@ export default {
       ),
     };
   },
-  data: () => ({ camelot: null, tempo: null }),
+  data: () => ({ camelot: null, tempo: null, tempoError: '' }),
   computed: {
     /** Spell out the note name, since Camelot alone is opaque if you are unsure. */
     preview() {
@@ -123,11 +124,17 @@ export default {
     },
     async save() {
       const parsed = fromCamelotCode(this.camelot);
-      await this.overrides.set(this.track.id, {
-        key: parsed ? displayName(parsed.pitchClass) : null,
-        mode: parsed ? parsed.mode : null,
-        tempo: this.tempo,
-      });
+      this.tempoError = '';
+      try {
+        await this.overrides.set(this.track.id, {
+          key: parsed ? displayName(parsed.pitchClass) : null,
+          mode: parsed ? parsed.mode : null,
+          tempo: this.tempo,
+        });
+      } catch (error) {
+        this.tempoError = error.message;
+        return;
+      }
       this.close();
     },
     async clear() {

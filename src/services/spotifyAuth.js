@@ -214,12 +214,13 @@ function scrubUrl(url) {
 }
 
 /** A valid access token, refreshing if needed. Throws ReauthRequired when dead. */
-export async function getAccessToken() {
+export async function getAccessToken({ force = false } = {}) {
   const tokens = readTokens();
   if (!tokens?.refreshToken) throw new ReauthRequired('Not signed in to Spotify.');
 
-  // 30s of slack so a token cannot expire mid-flight.
-  if (tokens.accessToken && Date.now() < tokens.expiresAt - 30_000) {
+  // 30s of slack so a token cannot expire mid-flight. `force` is for a 401: the
+  // server has rejected a token we still believe is valid, so refresh regardless.
+  if (!force && tokens.accessToken && Date.now() < tokens.expiresAt - 30_000) {
     return tokens.accessToken;
   }
 

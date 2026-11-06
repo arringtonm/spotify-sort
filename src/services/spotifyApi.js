@@ -7,32 +7,65 @@ const API = 'https://api.spotify.com/v1';
  * 429 with Retry-After (quota is pooled per developer account since Feb 2026),
  * and 401 once an access token lapses mid-session.
  */
-async function request(path, init = {}, { retries = 3 } = {}) {
-  const token = await getAccessToken();
+async function request(path, init = {}, { rateRetries = 3, authRetried = false } = {}) {
+  const token = await getAccessToken({ force: authRetried });
   const response = await fetch(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) },
   });
 
-  if (response.status === 429 && retries > 0) {
+  if (response.status === 429 && rateRetries > 0) {
     const wait = Number(response.headers.get('Retry-After') || 2);
     await new Promise((r) => setTimeout(r, (wait + 0.5) * 1000));
-    return request(path, init, { retries: retries - 1 });
+    return request(path, init, { rateRetries: rateRetries - 1, authRetried });
   }
-  if (response.status === 401 && retries > 0) {
-    return request(path, init, { retries: retries - 1 });
-  }
-  if (response.status === 403) {
-    throw new Error(
-      'Spotify returned 403. In development mode only allowlisted accounts (max 5) ' +
-        'can use this app, and the owner account must hold Premium.'
-    );
+  // One retry with a forced refresh. Retrying with the same cached token, as this
+  // used to, can only fail the same way.
+  if (response.status === 401 && !authRetried) {
+    return request(path, init, { rateRetries, authRetried: true });
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(`Spotify ${response.status}: ${body.error?.message ?? response.statusText}`);
+    throw new SpotifyError(response.status, body.error?.message ?? response.statusText, path);
   }
   return response.status === 204 ? null : response.json();
+}
+
+/**
+ * A Spotify failure with a message a person can act on. A 403 used to be reported
+ * as "your account is not allowlisted" no matter what, which was wrong for the most
+ * common case: a playlist the user does not own.
+ */
+export class SpotifyError extends Error {
+  constructor(status, detail, path = '') {
+    super(describeFailure(status, detail, path));
+    this.name = 'SpotifyError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+function describeFailure(status, detail, path) {
+  const playlist = /^\/playlists\//.test(path);
+  if (status === 403 && playlist) {
+    return (
+      'Spotify only shares the tracks of playlists you own or collaborate on. ' +
+      'Copy this playlist into one of your own, or paste a Deezer link instead.'
+    );
+  }
+  if (status === 404 && playlist) {
+    return (
+      'Spotify would not return that playlist. Playlists made by Spotify itself ' +
+      '(editorial and personalised mixes) are not available to apps like this one.'
+    );
+  }
+  if (status === 403) {
+    return (
+      'Spotify returned 403. In development mode only allowlisted accounts (max 5) ' +
+      'can use this app, and the owner account must hold Premium.'
+    );
+  }
+  return `Spotify ${status}: ${detail}`;
 }
 
 /** Smallest artwork at least `min` px wide — table rows only need a thumbnail. */
@@ -137,7 +170,8 @@ export function getMyPlaylists(onProgress) {
     return all.map((p) => ({
       id: p.id,
       name: p.name,
-      trackCount: p.tracks?.total ?? 0,
+      // Renamed to `items` in the Feb 2026 shape.
+      trackCount: p.items?.total ?? p.tracks?.total ?? 0,
       owner: p.owner?.display_name ?? null,
     }));
   });

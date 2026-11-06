@@ -61,6 +61,7 @@
 
       <v-btn-toggle
         v-model="filters.setMode"
+        mandatory
         density="compact"
         variant="outlined"
         divided
@@ -94,6 +95,7 @@
         />
         <v-btn-toggle
           v-model="filters.setDirection"
+          mandatory
           density="compact"
           variant="outlined"
           divided

@@ -167,9 +167,16 @@ export const useFiltersStore = defineStore('filters', {
       this.setMode = false;
     },
     resetBounds() {
+      this.resetAll();
+    },
+
+    /** Back to "show everything". */
+    resetAll() {
       this.tempoRange = [this.bpmMin, this.bpmMax];
       this.clearSeed();
       this.genre = null;
+      this.query = '';
+      this.selectedCodes = [...ALL_CAMELOT_CODES];
     },
 
     toggleCode(code) {
