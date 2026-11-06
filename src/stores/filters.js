@@ -178,8 +178,14 @@ export const useFiltersStore = defineStore('filters', {
      */
     appliedFilters() {
       const chips = [];
-      if (this.seedTrack) return chips; // seed mode has its own card
-      if (this.query) chips.push({ id: 'query', label: `“${this.query}”` });
+      // In a built set search is ignored, so don't claim it applies.
+      if (this.query && !this.ordered) chips.push({ id: 'query', label: `“${this.query}”` });
+      // Key and tempo step aside while mixing (the seed card says so); genre and
+      // search still narrow, so they still show.
+      if (this.seedTrack) {
+        this.genres.forEach((g) => chips.push({ id: `genre:${g}`, label: g }));
+        return chips;
+      }
       if (!this.allKeysSelected) {
         const codes = ALL_CAMELOT_CODES.filter((c) => this.selectedCodes.includes(c)).sort(
           (a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b)

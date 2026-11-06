@@ -72,8 +72,30 @@ function open() {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      // Let a newer build (another tab, an updated PWA) upgrade the schema
+      // instead of waiting on this connection forever.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
+    // An older version of the app is still open somewhere and holding the
+    // database. Fail visibly rather than hang the whole app on startup.
+    request.onblocked = () => {
+      dbPromise = null;
+      reject(
+        new Error(
+          'An older copy of Spotify Sort is open in another tab or window. Close it and reload.'
+        )
+      );
+    };
   });
   return dbPromise;
 }
@@ -127,6 +149,11 @@ export async function putTracks(incoming) {
             if (existing[field] !== undefined && existing[field] !== null) {
               merged[field] = existing[field];
             }
+          }
+          // A dead end ("no preview") is worth retrying once a preview turns up.
+          if (merged.analysisState === UNAVAILABLE && plain.previewUrl && !existing.previewUrl) {
+            merged.analysisState = PENDING;
+            merged.attempts = 0;
           }
           merged.updatedAt = Date.now();
           store.put(merged);

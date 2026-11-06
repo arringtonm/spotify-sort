@@ -162,6 +162,7 @@ export const usePlayerStore = defineStore('player', {
         const file = localFile(track.id);
         if (file) {
           const cached = await cachedWaveform(track.id);
+          if (this.loadingId !== track.id) return;
           this.waveform = cached ? markRaw(cached) : null;
           if (objectUrl) URL.revokeObjectURL(objectUrl);
           objectUrl = URL.createObjectURL(file);
@@ -192,6 +193,7 @@ export const usePlayerStore = defineStore('player', {
         if (this.loadingId !== track.id) return;
 
         const cached = await cachedWaveform(track.id);
+        if (this.loadingId !== track.id) return;
         this.waveform = cached ? markRaw(cached) : null;
 
         /*
@@ -210,12 +212,14 @@ export const usePlayerStore = defineStore('player', {
           objectUrl = URL.createObjectURL(blob);
           player.src = objectUrl;
         } catch {
+          if (this.loadingId !== track.id) return;
           // Fall back to streaming the URL directly; just no waveform this time.
           bytes = null;
           player.src = url;
         }
 
         await player.play();
+        if (this.loadingId !== track.id) return;
         this.currentId = track.id;
         this.updateMediaMetadata(track);
 

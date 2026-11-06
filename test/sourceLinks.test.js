@@ -72,3 +72,22 @@ test('extracts tracks from a Spotify embed page, skipping local files', () => {
 test('reports an unrecognised embed page instead of returning nothing', () => {
   assert.throws(() => extractEmbedTracks('<html></html>'), /not recognised/);
 });
+
+test('extracts the single track from a track embed page', () => {
+  const entity = {
+    type: 'track',
+    name: 'Loser',
+    title: 'Loser',
+    uri: 'spotify:track:7bxaFZ1O3cHkgLKMsdC3xR',
+    artists: [{ name: 'Tame Impala' }],
+    duration: 223069,
+    audioPreview: { url: 'https://p.scdn.co/mp3-preview/x' },
+  };
+  const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+    props: { pageProps: { state: { data: { entity } } } },
+  })}</script>`;
+  const { tracks } = extractEmbedTracks(html);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].artist, 'Tame Impala');
+  assert.equal(tracks[0].previewUrl, 'https://p.scdn.co/mp3-preview/x');
+});

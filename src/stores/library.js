@@ -329,7 +329,11 @@ export const useLibraryStore = defineStore('library', {
       }
       if (access?.readable) {
         const report = await getPlaylistTracks(ref.id, onFetch);
-        return { ...report, name: access.name };
+        // `collaborative` doesn't mean *you* collaborate on it; a refusal here
+        // still deserves the public-page route.
+        if (report.tracks.length || report.complete || !EMBED_PROXY) {
+          return { ...report, name: access.name };
+        }
       }
       const page = await viaEmbed(
         access
@@ -500,7 +504,14 @@ export const useLibraryStore = defineStore('library', {
               skipped.push(`${file.name} (longer than ${MAX_SECONDS / 60} minutes)`);
               continue;
             }
-            const analysis = await analyseInWorker(pcm.channels, pcm.length, pcm.sampleRate);
+            // A worker killed for running out of memory doesn't always report it;
+            // don't let one file hang the whole import.
+            const analysis = await Promise.race([
+              analyseInWorker(pcm.channels, pcm.length, pcm.sampleRate),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('analysis took too long')), 180_000)
+              ),
+            ]);
             if (analysis.waveform) await putWaveform(id, analysis.waveform).catch(() => {});
             rememberFile(id, file);
             const { artist, title } = parseAudioFilename(file.name);
@@ -525,6 +536,8 @@ export const useLibraryStore = defineStore('library', {
             });
           } catch (error) {
             skipped.push(`${file.name} (${error?.message || 'could not be decoded'})`);
+            // Start the next file on a fresh worker in case this one died.
+            releaseAnalysisWorkers();
           }
         }
         releaseAnalysisWorkers();

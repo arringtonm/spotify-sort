@@ -93,6 +93,11 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
           // a no-op. Only definitive outcomes are cached and reused.
           let entry = cached.get(track.id) ?? null;
           if (entry && !CACHEABLE.has(entry.status)) entry = null;
+          // A track that now carries its own preview (e.g. re-imported from a
+          // Spotify embed page) deserves another try at a cached dead end.
+          if (entry && track.previewUrl && (entry.status === 'no-match' || entry.status === 'no-preview')) {
+            entry = null;
+          }
           if (!entry) {
             try {
               entry = await analyseTrack(track);

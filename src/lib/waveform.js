@@ -39,25 +39,28 @@ function biquad(type, cutoff, sampleRate) {
   };
 }
 
-/** Run a biquad over a signal (transposed direct form II). Returns a new array. */
-function filter(input, c) {
-  const out = new Float32Array(input.length);
+/**
+ * Streaming biquad (transposed direct form II). Filtering sample by sample means
+ * no full-length band copies: a 12-minute track would otherwise need several
+ * ~130 MB arrays at once, enough to crash a phone.
+ */
+function section(c) {
   let z1 = 0;
   let z2 = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    const x = input[i];
+  return (x) => {
     const y = c.b0 * x + z1;
     z1 = c.b1 * x - c.a1 * y + z2;
     z2 = c.b2 * x - c.a2 * y;
-    out[i] = y;
-  }
-  return out;
+    return y;
+  };
 }
 
 /** Linkwitz-Riley 4th order: the same Butterworth section, twice. */
-function lr4(input, type, cutoff, sampleRate) {
+function lr4(type, cutoff, sampleRate) {
   const c = biquad(type, cutoff, sampleRate);
-  return filter(filter(input, c), c);
+  const a = section(c);
+  const b = section(c);
+  return (x) => b(a(x));
 }
 
 /**
@@ -79,9 +82,10 @@ export function computeWaveform(
   const samplesPerBin = Math.max(1, Math.round(sampleRate / binsPerSecond));
   const bins = Math.ceil(length / samplesPerBin);
 
-  const low = lr4(mono, 'lowpass', lowCutoff, sampleRate);
-  const mid = lr4(lr4(mono, 'highpass', lowCutoff, sampleRate), 'lowpass', highCutoff, sampleRate);
-  const high = lr4(mono, 'highpass', highCutoff, sampleRate);
+  const lowpass = lr4('lowpass', lowCutoff, sampleRate);
+  const midHigh = lr4('highpass', lowCutoff, sampleRate);
+  const midLow = lr4('lowpass', highCutoff, sampleRate);
+  const highpass = lr4('highpass', highCutoff, sampleRate);
 
   /*
    * RMS per bin per band. Peaks barely move on modern, heavily limited masters,
@@ -89,17 +93,29 @@ export function computeWaveform(
    * drop the way a DJ expects to see them.
    */
   const raw = new Float32Array(bins * CHANNELS);
-  const sources = [mono, low, mid, high];
   for (let b = 0; b < bins; b += 1) {
     const start = b * samplesPerBin;
     const end = Math.min(start + samplesPerBin, length);
     const n = Math.max(1, end - start);
-    for (let ch = 0; ch < CHANNELS; ch += 1) {
-      const src = sources[ch];
-      let sum = 0;
-      for (let i = start; i < end; i += 1) sum += src[i] * src[i];
-      raw[b * CHANNELS + ch] = Math.sqrt(sum / n);
+    let sAll = 0;
+    let sLow = 0;
+    let sMid = 0;
+    let sHigh = 0;
+    for (let i = start; i < end; i += 1) {
+      const x = mono[i];
+      const l = lowpass(x);
+      const m = midLow(midHigh(x));
+      const h = highpass(x);
+      sAll += x * x;
+      sLow += l * l;
+      sMid += m * m;
+      sHigh += h * h;
     }
+    const o = b * CHANNELS;
+    raw[o] = Math.sqrt(sAll / n);
+    raw[o + 1] = Math.sqrt(sLow / n);
+    raw[o + 2] = Math.sqrt(sMid / n);
+    raw[o + 3] = Math.sqrt(sHigh / n);
   }
 
   /*

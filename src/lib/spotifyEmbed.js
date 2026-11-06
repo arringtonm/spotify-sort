@@ -27,7 +27,20 @@ export function extractEmbedTracks(html) {
   if (!entity) throw new Error('Spotify embed page had no playlist data.');
 
   const artwork = entity.coverArt?.sources?.[0]?.url ?? null;
-  const tracks = (entity.trackList ?? [])
+  // A track's embed page describes the track itself; there is no trackList.
+  const list =
+    entity.type === 'track'
+      ? [
+          {
+            uri: entity.uri,
+            title: entity.title ?? entity.name,
+            subtitle: (entity.artists ?? []).map((a) => a.name).join(', ') || null,
+            duration: entity.duration,
+            audioPreview: entity.audioPreview,
+          },
+        ]
+      : (entity.trackList ?? []);
+  const tracks = list
     .map((item) => {
       const id = /^spotify:track:([A-Za-z0-9]{22})$/.exec(item.uri ?? '')?.[1];
       if (!id) return null;
