@@ -5,9 +5,20 @@
       class="sticky top-[var(--header-h)] hidden max-h-[calc(100dvh-var(--header-h)-var(--player-h))] self-start overflow-y-auto overscroll-contain pt-3 pb-4 pr-1 [scrollbar-gutter:stable] lg:block"
       aria-labelledby="filters-heading"
     >
+      <!-- Mixing: the seed and its controls take the top of the sidebar, so the
+           results below keep the whole screen. -->
+      <SeedCard
+        v-if="filters.seedTrack && !crates.active"
+        variant="sidebar"
+        :class="filters.genreOptions.length && 'mb-6 border-b border-border pb-6'"
+        @edit="editing = $event"
+      />
       <!-- Fixed-height row; Reset is always laid out and only hidden when
            there's nothing to reset, so the panel below never moves. -->
-      <div class="mb-2 flex h-9 items-center justify-between">
+      <div
+        v-if="!filters.seedTrack || filters.genreOptions.length"
+        class="mb-2 flex h-9 items-center justify-between"
+      >
         <h2
           id="filters-heading"
           class="text-base font-semibold"
@@ -131,6 +142,7 @@
         <CrateHeader v-if="crates.active" />
         <SeedCard
           v-else
+          class="lg:hidden"
           @edit="editing = $event"
         />
 

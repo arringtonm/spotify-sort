@@ -1,33 +1,7 @@
 <template>
   <div :class="dense ? 'space-y-5' : 'space-y-7'">
-    <!-- Seed mode: key and tempo come from the seed, so say that instead of
-         silently disabling the controls. -->
-    <section
-      v-if="filters.seedTrack"
-      class="rounded-xl border border-accent/40 bg-accent-soft/50 p-4 text-sm"
-    >
-      <p class="font-medium">
-        Key and tempo come from the track you're mixing from
-      </p>
-      <p class="mt-1 text-muted">
-        Showing tracks that mix with
-        <strong class="text-text">{{ filters.seedTrack.title }}</strong>
-        ({{ filters.seedCode }}, {{ formatTempo(filters.seedTrack.tempo) }} BPM ±{{ filters.bpmTolerance }}).
-        <template v-if="filters.ordered">
-          Search doesn't apply to a built set, because removing a track would break the chain.
-        </template>
-      </p>
-      <Button
-        variant="outline"
-        size="sm"
-        class="mt-3"
-        @click="filters.clearSeed()"
-      >
-        <X /> Stop mixing
-      </Button>
-    </section>
-
-    <template v-else>
+    <!-- In mix mode key and tempo come from the seed track (see SeedCard). -->
+    <template v-if="!filters.seedTrack">
       <section aria-labelledby="f-key">
         <div class="mb-2 flex items-center justify-between gap-2">
           <h3
@@ -194,7 +168,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { X, Plus, Check, ChevronDown } from '@lucide/vue';
+import { Plus, Check, ChevronDown } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import TextInput from './ui/TextInput.vue';
 import Switch from './ui/Switch.vue';
@@ -202,7 +176,7 @@ import RangeSlider from './ui/RangeSlider.vue';
 import CamelotWheel from './CamelotWheel.vue';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';
-import { codeFor, formatTempo } from '@/lib/trackInfo.js';
+import { codeFor } from '@/lib/trackInfo.js';
 
 /** Tighter spacing and a height-aware wheel for the desktop sidebar. */
 defineProps({ dense: Boolean });
