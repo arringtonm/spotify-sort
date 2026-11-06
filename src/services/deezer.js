@@ -104,8 +104,11 @@ export async function findBySearch(artist, title) {
     try {
       const found = await jsonp(`/search?limit=1&q=${encodeURIComponent(query)}`);
       if (found?.data?.length) return jsonp(`/track/${found.data[0].id}`);
-    } catch {
-      // try the next form rather than abandoning the track
+    } catch (error) {
+      // A quota error isn't "not found": let it fail the attempt so the track is
+      // retried later, instead of being remembered as having no match.
+      if (error?.isQuota) throw error;
+      // otherwise try the next form rather than abandoning the track
     }
   }
   return null;
@@ -121,7 +124,10 @@ export async function resolve({ deezerId, isrc, artist, title }) {
   const track =
     (known?.id ? known : null) ||
     (await findByIsrc(isrc)) ||
-    (await findBySearch(artist, title).catch(() => null));
+    (await findBySearch(artist, title).catch((error) => {
+      if (error?.isQuota) throw error;
+      return null;
+    }));
   if (!track) return null;
   return {
     deezerId: track.id,
