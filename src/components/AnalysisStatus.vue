@@ -112,9 +112,12 @@ const eta = computed(() => {
 // Tracks analysed before energy existed (or imported with BPM/key already).
 const energyBacklog = computed(() => library.energyBacklog().length);
 
+// Counts are refreshed at the end of a run; while it runs, add its progress so
+// the numbers move with the bar.
+const runDone = computed(() => (library.busy && library.progress?.total ? library.progress.done : 0));
 const stats = computed(() => [
-  { label: 'Analysed', value: library.counts.done },
-  { label: 'Waiting', value: library.counts.pending },
+  { label: 'Analysed', value: library.counts.done + runDone.value },
+  { label: 'Waiting', value: Math.max(0, library.counts.pending - runDone.value) },
   { label: 'No preview', value: library.counts.unavailable },
   { label: 'Failed', value: library.counts.failed },
 ]);
