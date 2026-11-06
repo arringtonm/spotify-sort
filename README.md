@@ -20,7 +20,7 @@ npm run dev               # http://127.0.0.1:5173
 | `npm run dev` | Dev server, binds `127.0.0.1` |
 | `npm run build` | → `dist/` |
 | `npm run preview` | Serve the build |
-| `npm test` | 89 tests, `node:test`, no framework |
+| `npm test` | 96 tests, `node:test`, no framework |
 | `npx pwa-assets-generator` | Regenerate icons from `public/logo.svg` |
 | `npm run lint` / `lint:fix` | ESLint flat config |
 | `node scripts/validate-analyzer.mjs [n]` | Re-measure analyser accuracy |
@@ -30,10 +30,27 @@ Requires Node `^20.19.0 || >=22.12.0`.
 The dev server binds `127.0.0.1`, not `localhost`, deliberately — Spotify stopped accepting
 `localhost` redirect URIs on 27 Nov 2025, so the dev origin must match what is registered.
 
+### Connecting Spotify (optional)
+
+Links, DJ files and audio files work without it. To import Liked Songs and your own
+playlists:
+
+1. Create an app at <https://developer.spotify.com/dashboard> (Web API).
+2. Add the redirect URI `http://127.0.0.1:5173/callback` exactly.
+3. Under **User Management**, add the Spotify account(s) that will sign in (max 5). The app
+   owner's account must have Premium.
+4. Put the client ID in `.env` as `VITE_SPOTIFY_CLIENT_ID` and restart `npm run dev`.
+   No client secret is needed (or wanted) — sign-in is Authorization Code + PKCE in the
+   browser.
+
+If Spotify shows *INVALID_CLIENT: Invalid redirect URI*, step 2 doesn't match; if it says
+the user isn't registered, step 3 is missing.
+
 ## Where your library can come from
 
 **1. DJ software — the best source, and no login needed.**
-Rekordbox (`.xml`), Traktor (`.nml`), or CSV (which is how Serato and Mixed In Key export).
+Rekordbox (`.xml`), Traktor (`.nml`), or CSV (which is how Serato and Mixed In Key export;
+Exportify CSVs work too).
 These tools analysed the whole file offline, so their BPM and key beat anything derivable
 from a 30-second preview. Imported values are trusted outright and skip analysis entirely.
 
@@ -47,11 +64,19 @@ Android) *Share* it from the Spotify or Deezer app straight into Spotify Sort.
 - **Other Spotify playlists** (someone else's, Spotify's editorial lists, or any Spotify link
   while signed out) are read from Spotify's public embed page via a small proxy — the Vite
   dev server locally, a Cloudflare Worker in production (`proxy/`, see its README). This is
-  **unofficial**: it can break without notice and may cut long playlists short, and the UI
-  says so.
+  **unofficial**: it can break without notice, and the UI says so.
+- **The embed page stops at 100 tracks.** That's Spotify's page, not this app, and it has
+  no paging. For longer playlists you don't own: open the playlist in the Spotify desktop
+  app, select all tracks (⌘A / Ctrl+A), copy (⌘C), and paste into Spotify Sort. Every track
+  link is imported; signed in, each is looked up individually (Spotify removed the batch
+  endpoint), so a few hundred tracks take a minute or two. Playlists you own have no limit.
 
-**3. Spotify — Liked Songs or your playlists.** Capped at 5 allowlisted accounts by
-Spotify's development mode.
+Imports run as a visible step-by-step job — *Read → Save → Find previews → Analyse* — with
+progress per step. The sheet can be closed at any point (the job keeps going, with progress
+in the header) and closes itself when the import finishes.
+
+**3. Spotify — Liked Songs or your playlists.** Full length, no 100-track cap. Capped at 5
+allowlisted accounts by Spotify's development mode; see *Connecting Spotify* above.
 
 **4. Audio files on your device.** Drop MP3/AAC/WAV/AIFF/FLAC files to analyse whole tracks
 locally: far better key estimates than a 30s preview, plus a full-length waveform. Nothing
@@ -93,8 +118,9 @@ What rescues key is that Essentia's `strength` predicts correctness:
 | 0.80–0.90 | 64 | 34% | 61% |
 | **≥ 0.90** | **25** | **64%** | **88%** |
 
-Keys at or above `0.90` show `~`. Below it they render dimmed with their calibrated chance of
-being exactly right (`12B 34%`). Every track with a tempo and a key can start a mix; uncertain
+Keys at or above `0.90` show `~`. Below it the key pill renders dashed and dimmed, with its
+calibrated chance of being exactly right printed *beside* the pill (`12B` `34%`) — the pill
+is the key, the number is how far to trust it. A `?` means no strength was stored. Every track with a tempo and a key can start a mix; uncertain
 keys are still suggested, but ranked behind confident ones (a key-risk penalty added to the
 tempo distance, `keyRisk` in `src/lib/trackInfo.js`), and the mix card says how sure the
 starting key is. `KEY_CONFIDENCE_THRESHOLD` lives in `src/lib/analyzeAudio.js`.
@@ -283,6 +309,10 @@ This is why DJ-software import matters: it has none of these limits.
 - [x] Installable PWA with offline library
 - [x] Serato-style 3-band waveforms
 - [x] Full-length analysis of local audio files
+- [x] Mix from uncertain keys, ranked by key risk, with visible confidence
+- [ ] Read Serato's `database V2` directly; mark tracks you already own
+- [ ] Smarter "best match": genre overlap and energy alongside tempo and key
+- [ ] Local energy / danceability from Essentia (Spotify's audio features are gone)
 - [ ] Match imported DJ libraries back to Spotify IDs so both sources merge
 - [ ] Persist named sets between sessions
 - [ ] Mini waveforms in list rows; zoomed, scrolling waveform for full-length files
