@@ -217,3 +217,31 @@ export async function getDeezerCollection(type, id, onProgress) {
 
   return { name, tracks, total, complete, failure };
 }
+
+// ---- Discovery -------------------------------------------------------------
+
+/** The Deezer artist behind a track (resolving the track first if needed). */
+export async function artistForTrack(track) {
+  const match = track.deezerId ? { deezerId: track.deezerId } : await resolve(track);
+  if (!match?.deezerId) return null;
+  const row = await jsonp(`/track/${match.deezerId}`);
+  return row?.artist?.id ? { id: row.artist.id, name: row.artist.name } : null;
+}
+
+/** Artists Deezer considers similar. */
+export async function relatedArtists(artistId, limit = 8) {
+  const data = await jsonp(`/artist/${artistId}/related?limit=${limit}`);
+  return (data?.data ?? []).map((a) => ({ id: a.id, name: a.name }));
+}
+
+/** Deezer's "artist radio": tracks by the artist and similar artists. */
+export async function artistRadio(artistId, limit = 25) {
+  const data = await jsonp(`/artist/${artistId}/radio?limit=${limit}`);
+  return (data?.data ?? []).map((row) => ({ ...normaliseDeezerTrack(row), previewUrl: row.preview || null })).filter((t) => t.deezerId);
+}
+
+/** An artist's most popular tracks. */
+export async function artistTop(artistId, limit = 5) {
+  const data = await jsonp(`/artist/${artistId}/top?limit=${limit}`);
+  return (data?.data ?? []).map((row) => ({ ...normaliseDeezerTrack(row), previewUrl: row.preview || null })).filter((t) => t.deezerId);
+}

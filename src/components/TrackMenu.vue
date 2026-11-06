@@ -32,6 +32,12 @@
         >
           Needs a tempo and key first — add them below.
         </p>
+        <MenuItem
+          :disabled="!canSeed(track)"
+          @select="ui.discoverSeeds.value = [track]"
+        >
+          <Sparkles /> Find new tracks like this
+        </MenuItem>
         <MenuItem @select="$emit('edit')">
           <PenLine /> Correct tempo or key
         </MenuItem>
@@ -134,6 +140,7 @@ import {
   ArrowUp,
   ArrowDown,
   History,
+  Sparkles,
 } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import MenuItem from './ui/MenuItem.vue';
@@ -143,6 +150,7 @@ import { useToastStore } from '@/stores/toasts.js';
 import { useCratesStore } from '@/stores/crates.js';
 import { canSeed, spotifyUrl } from '@/lib/trackInfo.js';
 import { openExternal } from '@/platform/index.js';
+import { useUi } from '@/composables/useUi.js';
 
 const props = defineProps({ track: { type: Object, required: true } });
 defineEmits(['seed', 'edit']);
@@ -150,6 +158,7 @@ defineEmits(['seed', 'edit']);
 const player = usePlayerStore();
 const toasts = useToastStore();
 const crates = useCratesStore();
+const ui = useUi();
 const url = computed(() => spotifyUrl(props.track));
 const usedIn = computed(() => crates.usage.get(props.track.id) ?? []);
 

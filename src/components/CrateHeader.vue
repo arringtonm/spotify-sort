@@ -62,6 +62,14 @@
           :name="crate.name"
         />
         <Button
+          variant="secondary"
+          size="sm"
+          :disabled="!discoverSeeds.length"
+          @click="ui.discoverSeeds.value = discoverSeeds"
+        >
+          <Sparkles /> Find more
+        </Button>
+        <Button
           v-if="deletable"
           variant="danger-ghost"
           size="icon-sm"
@@ -149,7 +157,9 @@
 
 <script setup>
 import { computed } from 'vue';
-import { FolderOpen, X, PenLine, Trash2 } from '@lucide/vue';
+import { FolderOpen, X, PenLine, Trash2, Sparkles } from '@lucide/vue';
+import { useUi } from '@/composables/useUi.js';
+import { canSeed } from '@/lib/trackInfo.js';
 import Button from './ui/Button.vue';
 import ExportMenu from './ExportMenu.vue';
 import { useCratesStore } from '@/stores/crates.js';
@@ -159,6 +169,14 @@ const props = defineProps({ variant: { type: String, default: 'inline' } });
 const sidebar = computed(() => props.variant === 'sidebar');
 
 const crates = useCratesStore();
+const ui = useUi();
+/** Up to five measured tracks spread across the crate, to discover around. */
+const discoverSeeds = computed(() => {
+  const usable = crates.activeView.rows.filter(canSeed);
+  if (usable.length <= 5) return usable;
+  const step = usable.length / 5;
+  return Array.from({ length: 5 }, (_, i) => usable[Math.floor(i * step)]);
+});
 const crate = computed(() => crates.active);
 const rows = computed(() => crates.activeView.rows);
 const editable = computed(() => crate.value?.origin === 'user');

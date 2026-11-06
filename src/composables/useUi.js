@@ -6,12 +6,15 @@ const libraryOpen = ref(false);
 const pendingLink = ref('');
 /** The past-mixtapes importer (spreadsheet of Artist / Title / Mix #). */
 const mixtapeImportOpen = ref(false);
+/** Discover: the tracks to find new music around (null = closed). */
+const discoverSeeds = ref(null);
 
 export function useUi() {
   return {
     libraryOpen,
     pendingLink,
     mixtapeImportOpen,
+    discoverSeeds,
     importLink(text) {
       pendingLink.value = text;
       libraryOpen.value = true;

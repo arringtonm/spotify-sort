@@ -583,6 +583,25 @@ export const useLibraryStore = defineStore('library', {
     },
 
     /** Put failed tracks back in the queue and work them again. */
+    /**
+     * Tracks that have tempo and key but no energy reading yet (analysed before
+     * energy existed, or from DJ software). Measured from your own file when
+     * there is one, otherwise from a preview.
+     */
+    energyBacklog() {
+      return this.raw.filter((t) => !t.features && t.analysisState === 'done' && (t.serato?.path || t.deezerId || t.previewUrl || t.isrc || t.artist));
+    },
+
+    /** Measure energy for everything that hasn't been, then carry on with anything pending. */
+    measureEnergy() {
+      return this.withBusy(async () => {
+        const backlog = this.energyBacklog();
+        await patchTracks(backlog.map((t) => ({ id: t.id, patch: { analysisState: PENDING, attempts: 0 } })));
+        this.raw = await getAllTracks();
+        await this.analyse(selectPending(this.raw));
+      });
+    },
+
     retryFailed() {
       return this.withBusy(async () => {
         const retryable = selectRetryable(this.raw);
@@ -763,6 +782,20 @@ export const useLibraryStore = defineStore('library', {
       });
       const folder = useCratesStore().importMixtapes(folderName, withIds);
       return { folder, found, total };
+    },
+
+    /** Keep tracks found by Discover: they arrive already measured. */
+    async addDiscovered(tracks) {
+      const transient = ['via', 'matchScore', 'matchReasons', 'relation', 'position'];
+      const plain = tracks.map((t) => {
+        const copy = { ...t, analysisState: 'done' };
+        transient.forEach((k) => delete copy[k]);
+        return copy;
+      });
+      const merge = await putTracks(plain);
+      this.raw = await getAllTracks();
+      if (this.isDemo) this.origin = 'link';
+      return merge;
     },
 
     async importFromFile(file) {

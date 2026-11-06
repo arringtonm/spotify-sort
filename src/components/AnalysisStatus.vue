@@ -65,17 +65,27 @@
       >
         <RotateCcw /> Retry {{ library.counts.failed }} failed
       </Button>
+      <Button
+        v-if="!library.busy && energyBacklog"
+        variant="secondary"
+        size="sm"
+        @click="run(library.measureEnergy)"
+      >
+        <Gauge /> Measure energy for {{ energyBacklog.toLocaleString() }}
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue';
-import { Play, Square, RotateCcw } from '@lucide/vue';
+import { Play, Square, RotateCcw, Gauge } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import { useLibraryStore } from '@/stores/library.js';
 
 const library = useLibraryStore();
+// Tracks analysed before energy existed (or imported with BPM/key already).
+const energyBacklog = computed(() => library.energyBacklog().length);
 
 const stats = computed(() => [
   { label: 'Analysed', value: library.counts.done },

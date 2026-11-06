@@ -244,6 +244,7 @@
     />
     <CrateDialogs />
     <MixtapeImport />
+    <DiscoverSheet />
     <CrateDock />
   </div>
 </template>
@@ -269,6 +270,7 @@ import CrateDialogs from '@/components/CrateDialogs.vue';
 import CrateDock from '@/components/CrateDock.vue';
 import DensityToggle from '@/components/DensityToggle.vue';
 import MixtapeImport from '@/components/MixtapeImport.vue';
+import DiscoverSheet from '@/components/DiscoverSheet.vue';
 import { useCratesStore, CRATES_STORAGE_KEY } from '@/stores/crates.js';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useLibraryStore } from '@/stores/library.js';

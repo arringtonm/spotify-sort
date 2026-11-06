@@ -119,6 +119,25 @@ async function analyseLocalFile(track) {
   };
 }
 
+/** Analyse a track whose preview URL is already known and fresh (Discover). */
+export async function analysePreview(track) {
+  const { channels, length, sampleRate } = await decodePreview(track.previewUrl);
+  const analysis = await analyseInWorker(channels, length, sampleRate);
+  return {
+    id: track.id,
+    status: 'ok',
+    tempo: track.tempo ?? analysis.tempo,
+    tempoSource: track.tempo ? track.tempoSource : 'analysis',
+    pitchClass: analysis.pitchClass,
+    key: displayName(analysis.pitchClass),
+    mode: analysis.mode,
+    keyStrength: analysis.keyStrength,
+    keyConfident: analysis.keyConfident,
+    keySource: 'analysis',
+    features: analysis.features ?? null,
+  };
+}
+
 export async function analyseTrack(track) {
   // Your own file first: full quality, no catalogue lookup needed.
   if (track.serato?.path && !track.serato.missing) {

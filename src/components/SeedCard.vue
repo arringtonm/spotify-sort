@@ -152,15 +152,26 @@
         Same key, ±1 on the wheel, or relative major/minor, within ±{{ filters.bpmTolerance }} BPM (half/double time included).
       </template>
     </p>
-    <Button
-      v-if="filters.setMode && filters.rows.length"
-      variant="secondary"
-      size="sm"
+    <div
+      class="flex flex-wrap gap-2"
       :class="!sidebar && 'mt-3'"
-      @click="saveAsCrate"
     >
-      <FolderPlus /> Save set as crate
-    </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        @click="ui.discoverSeeds.value = [seed]"
+      >
+        <Sparkles /> Find new tracks
+      </Button>
+      <Button
+        v-if="filters.setMode && filters.rows.length"
+        variant="secondary"
+        size="sm"
+        @click="saveAsCrate"
+      >
+        <FolderPlus /> Save set as crate
+      </Button>
+    </div>
   </section>
 </template>
 
@@ -175,6 +186,7 @@ import {
   TrendingDown,
   MoveRight,
   FolderPlus,
+  Sparkles,
 } from '@lucide/vue';
 import Button from './ui/Button.vue';
 import Segmented from './ui/Segmented.vue';
@@ -182,6 +194,7 @@ import Stepper from './ui/Stepper.vue';
 import KeyBadge from './KeyBadge.vue';
 import { useFiltersStore } from '@/stores/filters.js';
 import { useCratesStore } from '@/stores/crates.js';
+import { useUi } from '@/composables/useUi.js';
 import { formatTempo } from '@/lib/trackInfo.js';
 
 const props = defineProps({ variant: { type: String, default: 'inline' } });
@@ -190,6 +203,7 @@ const sidebar = computed(() => props.variant === 'sidebar');
 
 const filters = useFiltersStore();
 const crates = useCratesStore();
+const ui = useUi();
 const seed = computed(() => filters.seedTrack);
 // Reka toggle values are strings; the store keeps a boolean.
 const mode = computed({
