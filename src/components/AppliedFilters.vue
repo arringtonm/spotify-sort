@@ -8,8 +8,10 @@
     aria-label="Applied filters"
     role="region"
   >
+    <!-- Phones: no room beside the count, so chips are left to the Filters
+         badge and the filter sheet; Clear all stays one tap away. -->
     <div
-      class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      class="hidden min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:flex [&::-webkit-scrollbar]:hidden"
     >
       <button
         v-for="chip in filters.appliedFilters"
@@ -30,7 +32,7 @@
       v-if="filters.appliedFilters.length"
       variant="ghost"
       size="sm"
-      class="shrink-0 text-accent"
+      class="ml-auto shrink-0 text-accent"
       @click="filters.resetFilters()"
     >
       Clear all
