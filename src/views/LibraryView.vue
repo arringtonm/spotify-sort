@@ -53,7 +53,7 @@
     >
       <!-- Toolbar: search is always one tap away; everything else is secondary. -->
       <div
-        class="sticky top-[var(--header-h)] z-20 -mx-3 flex h-[var(--toolbar-h)] items-center gap-2 bg-bg/90 px-3 backdrop-blur-md sm:-mx-5 sm:px-5 lg:mx-0 lg:px-0"
+        class="sticky top-[var(--header-h)] z-20 -mx-3 flex h-[var(--toolbar-h)] items-center gap-1.5 bg-bg/90 sm:gap-2 px-3 backdrop-blur-md sm:-mx-5 sm:px-5 lg:mx-0 lg:px-0"
       >
         <div class="min-w-0 flex-1">
           <TextInput
@@ -336,9 +336,10 @@ useEventListener(window, 'storage', (event) => {
 const filtersOpen = ref(false);
 const roomy = useMediaQuery('(min-width: 640px)');
 const searchPlaceholder = computed(() => {
-  if (crates.active) return roomy.value ? `Search ${crates.active.name}` : 'Search this crate';
-  if (filters.ordered) return roomy.value ? 'Search is off while building a set' : 'Search off in sets';
-  return roomy.value ? 'Search artist, title, album, genre' : 'Search tracks';
+  // Phones: four icon buttons share the row, leaving room for about one word.
+  if (crates.active) return roomy.value ? `Search ${crates.active.name}` : 'Search crate';
+  if (filters.ordered) return roomy.value ? 'Search is off while building a set' : 'Off in sets';
+  return roomy.value ? 'Search artist, title, album, genre' : 'Search';
 });
 const editing = ref(null);
 
