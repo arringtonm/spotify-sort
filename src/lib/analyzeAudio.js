@@ -1,4 +1,5 @@
 import { toPitchClass, normaliseMode } from './musicalKey.js';
+import { measureEnergyFeatures } from './energy.js';
 
 /**
  * Essentia's key `strength` predicts correctness, measured over 102 tracks with
@@ -19,7 +20,8 @@ export const KEY_CONFIDENCE_THRESHOLD = 0.9;
  * threshold. Cached entries carrying an older version are recomputed instead of
  * being served silently stale.
  */
-export const ANALYZER_VERSION = 2;
+// 3: adds energy features (loudness, onset rate, brightness, danceability).
+export const ANALYZER_VERSION = 3;
 
 /** Average channels down to mono. Essentia's estimators take a single vector. */
 export function toMono(channels, length) {
@@ -74,6 +76,13 @@ export function analyzePcm(essentia, mono, sampleRate) {
       keyStrength: Number(Number(key.strength).toFixed(3)),
       keyConfident: Number(key.strength) >= KEY_CONFIDENCE_THRESHOLD,
       analyzerVersion: ANALYZER_VERSION,
+      features: (() => {
+        try {
+          return measureEnergyFeatures(essentia, mono, sampleRate);
+        } catch {
+          return null;
+        }
+      })(),
       // Tempo is reliable (~91-95% usable on validation); key is not.
       estimated: true,
     };

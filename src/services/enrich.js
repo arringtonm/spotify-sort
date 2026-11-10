@@ -34,7 +34,7 @@ export function releaseAnalysisWorkers() {
   pool = null;
 }
 
-function analyseInWorker(channels, length, sampleRate) {
+export function analyseInWorker(channels, length, sampleRate) {
   const buffers = channels.map((c) => c.buffer);
   return getPool().submit({ channels: buffers, length, sampleRate }, buffers);
 }
@@ -45,11 +45,9 @@ function getAudioContext() {
   return audioContext;
 }
 
-/** Fetch a preview and decode it. Web Audio is main-thread only. */
-async function decodePreview(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`preview HTTP ${response.status}`);
-  const buffer = await getAudioContext().decodeAudioData(await response.arrayBuffer());
+/** Decode compressed audio into transferable per-channel PCM. */
+export async function decodeAudio(bytes) {
+  const buffer = await getAudioContext().decodeAudioData(bytes);
   const channels = [];
   for (let c = 0; c < buffer.numberOfChannels; c += 1) {
     // Copy: the underlying AudioBuffer memory cannot be transferred directly.
@@ -58,8 +56,121 @@ async function decodePreview(url) {
   return { channels, length: buffer.length, sampleRate: buffer.sampleRate };
 }
 
+/** Fetch a preview and decode it. Web Audio is main-thread only. */
+async function decodePreview(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`preview HTTP ${response.status}`);
+  return decodeAudio(await response.arrayBuffer());
+}
+
+let waveformPool = null;
+
+/** Waveform for already-decoded audio, computed off the main thread. */
+export function waveformInWorker({ channels, length, sampleRate }) {
+  if (!waveformPool) {
+    waveformPool = createWorkerPool(
+      () => new Worker(new URL('./waveform.worker.js', import.meta.url), { type: 'module' }),
+      { size: 1 }
+    );
+  }
+  const buffers = channels.map((c) => c.buffer);
+  return waveformPool.submit({ channels: buffers, length, sampleRate }, buffers);
+}
+
+/**
+ * A stretch from the middle of a long recording, downmixed to mono. Two minutes
+ * of the real track beats a 30s preview for key, while keeping memory bounded
+ * (a whole 7-minute stereo decode is ~150 MB).
+ */
+export function middleSegment({ channels, length, sampleRate }, seconds = 120) {
+  const take = Math.min(length, Math.round(seconds * sampleRate));
+  const start = Math.max(0, Math.floor((length - take) / 2));
+  const mono = new Float32Array(take);
+  for (const channel of channels) {
+    for (let i = 0; i < take; i++) mono[i] += channel[start + i] / channels.length;
+  }
+  return { channels: [mono], length: take, sampleRate };
+}
+
+/**
+ * At most two whole files decoded at once: a 7-minute stereo decode is ~150 MB
+ * (plus a copy), and the queue runs four lanes.
+ */
+let decoding = 0;
+const waiting = [];
+async function withDecodeSlot(run) {
+  if (decoding >= 2) await new Promise((resolve) => waiting.push(resolve));
+  decoding++;
+  try {
+    return await run();
+  } finally {
+    decoding--;
+    waiting.shift()?.();
+  }
+}
+
+/** Analyse the user's own copy of a track (Serato), when this build can read files. */
+async function analyseLocalFile(track) {
+  const { readAudioFile, canReadLocalLibraries } = await import('./localLibraries.js');
+  if (!canReadLocalLibraries) return null;
+  // Decode, then keep only a mono middle segment so the full PCM can be freed.
+  const segment = await withDecodeSlot(async () => middleSegment(await decodeAudio(await readAudioFile(track.serato.path))));
+  const analysis = await analyseInWorker(segment.channels, segment.length, segment.sampleRate);
+  return {
+    id: track.id,
+    status: 'ok',
+    enrichedAt: Date.now(),
+    tempo: analysis.tempo,
+    tempoSource: 'analysis',
+    tempoConfidence: analysis.tempoConfidence,
+    pitchClass: analysis.pitchClass,
+    key: displayName(analysis.pitchClass),
+    mode: analysis.mode,
+    keyStrength: analysis.keyStrength,
+    keyConfident: analysis.keyConfident,
+    keySource: 'analysis',
+    analysedFrom: 'file',
+    features: analysis.features ?? null,
+    // The waveform of a 2-minute slice would mislead; playback builds the full one.
+    waveform: null,
+  };
+}
+
+/** Analyse a track whose preview URL is already known and fresh (Discover). */
+export async function analysePreview(track) {
+  const { channels, length, sampleRate } = await decodePreview(track.previewUrl);
+  const analysis = await analyseInWorker(channels, length, sampleRate);
+  return {
+    id: track.id,
+    status: 'ok',
+    tempo: track.tempo ?? analysis.tempo,
+    tempoSource: track.tempo ? track.tempoSource : 'analysis',
+    pitchClass: analysis.pitchClass,
+    key: displayName(analysis.pitchClass),
+    mode: analysis.mode,
+    keyStrength: analysis.keyStrength,
+    keyConfident: analysis.keyConfident,
+    keySource: 'analysis',
+    features: analysis.features ?? null,
+  };
+}
+
 export async function analyseTrack(track) {
-  const match = await resolveDeezer(track);
+  // Your own file first: full quality, no catalogue lookup needed.
+  if (track.serato?.path && !track.serato.missing) {
+    try {
+      const local = await analyseLocalFile(track);
+      if (local) return local;
+    } catch {
+      /* moved or unreadable: fall back to a preview */
+    }
+  }
+  let match = await resolveDeezer(track);
+  // Tracks read from Spotify's embed page carry their own 30s preview; use it
+  // when Deezer has no match.
+  if ((!match || !match.preview) && track.previewUrl) {
+    match = { ...(match ?? { deezerId: null, isrc: track.isrc ?? null, bpm: null }), preview: track.previewUrl };
+  }
   if (!match) return { id: track.id, status: 'no-match', enrichedAt: Date.now() };
 
   const base = { id: track.id, isrc: match.isrc, deezerId: match.deezerId, enrichedAt: Date.now() };
@@ -86,6 +197,10 @@ export async function analyseTrack(track) {
       keyStrength: analysis.keyStrength,
       keyConfident: analysis.keyConfident,
       keySource: 'analysis',
+      features: analysis.features ?? null,
+      // Carried out of band: the queue stores it separately (binary), never in
+      // the JSON enrichment cache.
+      waveform: analysis.waveform ?? null,
     };
   } catch (error) {
     return match.bpm
@@ -111,10 +226,14 @@ export function applyEnrichment(track, entry) {
     mode: keptKey ? track.mode : (entry.mode ?? null),
     pitchClass: keptKey ? track.pitchClass : (entry.pitchClass ?? null),
     deezerId: entry.deezerId ?? track.deezerId ?? null,
-    tempoSource: track.tempo != null ? 'existing' : (entry.tempoSource ?? null),
-    keySource: keptKey ? 'existing' : (entry.keySource ?? null),
-    keyStrength: keptKey ? null : (entry.keyStrength ?? null),
-    keyConfident: keptKey ? true : Boolean(entry.keyConfident),
+    // Kept values keep their own provenance (Serato, a correction, an earlier
+    // analysis and its confidence) — re-analysing to add energy must not turn a
+    // low-confidence estimate into "existing".
+    tempoSource: track.tempo != null ? (track.tempoSource ?? 'existing') : (entry.tempoSource ?? null),
+    keySource: keptKey ? (track.keySource ?? 'existing') : (entry.keySource ?? null),
+    keyStrength: keptKey ? (track.keyStrength ?? null) : (entry.keyStrength ?? null),
+    keyConfident: keptKey ? (track.keyConfident ?? true) : Boolean(entry.keyConfident),
+    features: entry.features ?? track.features ?? null,
     enrichStatus: entry.status,
   };
 }

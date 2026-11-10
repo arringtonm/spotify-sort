@@ -16,15 +16,17 @@ import { ANALYZER_VERSION } from '../lib/analyzeAudio.js';
  *               track removed and later re-imported is not re-analysed.
  *   overrides   manual corrections. Outrank everything; never invalidated.
  *   meta        library-level bookkeeping (origin, last import).
+ *   waveforms   3-band waveform per track (binary, ~18 KB each), keyed by id.
  */
 
 const DB_NAME = 'spotify-sort';
-const VERSION = 4;
+const VERSION = 5;
 
 export const TRACKS = 'tracks';
 export const ENRICHMENT = 'enrichment';
 export const OVERRIDES = 'overrides';
 export const META = 'meta';
+export const WAVEFORMS = 'waveforms';
 
 /** Analysis lifecycle for a single track. */
 export const PENDING = 'pending';
@@ -53,7 +55,7 @@ function open() {
 
     request.onupgradeneeded = (event) => {
       const db = request.result;
-      for (const name of [ENRICHMENT, OVERRIDES]) {
+      for (const name of [ENRICHMENT, OVERRIDES, WAVEFORMS]) {
         if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'key' });
@@ -70,8 +72,30 @@ function open() {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      // Let a newer build (another tab, an updated PWA) upgrade the schema
+      // instead of waiting on this connection forever.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
+    // An older version of the app is still open somewhere and holding the
+    // database. Fail visibly rather than hang the whole app on startup.
+    request.onblocked = () => {
+      dbPromise = null;
+      reject(
+        new Error(
+          'An older copy of Spotify Sort is open in another tab or window. Close it and reload.'
+        )
+      );
+    };
   });
   return dbPromise;
 }
@@ -94,7 +118,7 @@ function run(storeName, mode, body) {
 /** Fields an import must never clobber — they are earned, not fetched. */
 const ANALYSIS_FIELDS = [
   'tempo', 'key', 'mode', 'pitchClass', 'tempoSource', 'keySource',
-  'keyConfident', 'deezerId', 'analysisState', 'attempts', 'lastError',
+  'keyConfident', 'keyStrength', 'deezerId', 'analysisState', 'attempts', 'lastError',
 ];
 
 /**
@@ -125,6 +149,11 @@ export async function putTracks(incoming) {
             if (existing[field] !== undefined && existing[field] !== null) {
               merged[field] = existing[field];
             }
+          }
+          // A dead end ("no preview") is worth retrying once a preview turns up.
+          if (merged.analysisState === UNAVAILABLE && plain.previewUrl && !existing.previewUrl) {
+            merged.analysisState = PENDING;
+            merged.attempts = 0;
           }
           merged.updatedAt = Date.now();
           store.put(merged);
@@ -203,6 +232,18 @@ export async function countStates() {
   });
 }
 
+export async function deleteTracks(ids) {
+  if (!ids.length) return;
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(TRACKS, 'readwrite');
+    const store = transaction.objectStore(TRACKS);
+    ids.forEach((id) => store.delete(id));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 export const clearTracks = () => run(TRACKS, 'readwrite', (store) => store.clear());
 
 // ------------------------------------------------------------ enrichment
@@ -255,3 +296,24 @@ export const setMeta = (key, value) =>
   run(META, 'readwrite', (store) => store.put(toPlain({ key, ...value })));
 
 export const getMeta = (key) => run(META, 'readonly', (store) => store.get(key));
+
+// ---------------------------------------------------------------- waveforms
+
+/**
+ * Waveforms are binary (Uint8Array), so they bypass toPlain(): a JSON round trip
+ * would turn the array into an object of 18,000 numbered keys. The record is
+ * built from plain values here, so there is no reactive proxy to strip.
+ */
+export const putWaveform = (id, waveform) =>
+  run(WAVEFORMS, 'readwrite', (store) =>
+    store.put({
+      id,
+      version: waveform.version,
+      binsPerSecond: waveform.binsPerSecond,
+      bins: waveform.bins,
+      duration: waveform.duration,
+      data: waveform.data,
+    })
+  );
+
+export const getWaveform = (id) => run(WAVEFORMS, 'readonly', (store) => store.get(id));

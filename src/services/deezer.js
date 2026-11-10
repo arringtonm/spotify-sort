@@ -104,8 +104,11 @@ export async function findBySearch(artist, title) {
     try {
       const found = await jsonp(`/search?limit=1&q=${encodeURIComponent(query)}`);
       if (found?.data?.length) return jsonp(`/track/${found.data[0].id}`);
-    } catch {
-      // try the next form rather than abandoning the track
+    } catch (error) {
+      // A quota error isn't "not found": let it fail the attempt so the track is
+      // retried later, instead of being remembered as having no match.
+      if (error?.isQuota) throw error;
+      // otherwise try the next form rather than abandoning the track
     }
   }
   return null;
@@ -115,9 +118,16 @@ export async function findBySearch(artist, title) {
  * Resolve a Spotify track to its Deezer counterpart, ISRC first then search.
  * Returns the fields we care about, or null when there is no match.
  */
-export async function resolve({ isrc, artist, title }) {
+export async function resolve({ deezerId, isrc, artist, title }) {
+  // Tracks imported from Deezer already know their ID — skip the lookup.
+  const known = deezerId ? await jsonp(`/track/${deezerId}`).catch(() => null) : null;
   const track =
-    (await findByIsrc(isrc)) || (await findBySearch(artist, title).catch(() => null));
+    (known?.id ? known : null) ||
+    (await findByIsrc(isrc)) ||
+    (await findBySearch(artist, title).catch((error) => {
+      if (error?.isQuota) throw error;
+      return null;
+    }));
   if (!track) return null;
   return {
     deezerId: track.id,
@@ -141,4 +151,150 @@ export async function getPreviewUrl(deezerId) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Public Deezer collections. No sign-in needed, and every row carries the Deezer
+ * ID (and usually the ISRC), so analysis skips the matching step entirely.
+ */
+export function normaliseDeezerTrack(row, album = null) {
+  if (!row?.id || row.type && row.type !== 'track') return null;
+  const art = row.album ?? album;
+  return {
+    id: `deezer:${row.id}`,
+    deezerId: row.id,
+    uri: null,
+    artist: row.artist?.name ?? 'Unknown',
+    artistIds: [],
+    title: row.title ?? row.title_short ?? 'Unknown',
+    album: art?.title ?? null,
+    artwork: art?.cover_medium ?? art?.cover_small ?? null,
+    isrc: row.isrc ?? null,
+    durationMs: row.duration ? row.duration * 1000 : null,
+    genres: [],
+    tempo: row.bpm > 0 ? row.bpm : null,
+    tempoSource: row.bpm > 0 ? 'deezer' : null,
+    pitchClass: null,
+    key: null,
+    mode: null,
+  };
+}
+
+/**
+ * Fetch a Deezer playlist, album or track as `{ name, tracks, total, complete }`.
+ * Pages are followed via `index`; Deezer caps a page at 100 rows.
+ */
+export async function getDeezerCollection(type, id, onProgress) {
+  if (type === 'track') {
+    const row = await jsonp(`/track/${id}`);
+    const track = normaliseDeezerTrack(row);
+    if (!track) throw new Error('Deezer could not find that track.');
+    return { name: `${track.artist} – ${track.title}`, tracks: [track], total: 1, complete: true };
+  }
+
+  const meta = await jsonp(`/${type}/${id}`);
+  const name = meta?.title ?? null;
+  const total = meta?.nb_tracks ?? null;
+  const albumInfo = type === 'album' ? meta : null;
+
+  const tracks = [];
+  let index = 0;
+  let complete = true;
+  let failure = null;
+  // A hard ceiling so a malformed `next` can never loop forever.
+  for (let page = 0; page < 200; page += 1) {
+    let body;
+    try {
+      body = await jsonp(`/${type}/${id}/tracks?limit=100&index=${index}`);
+    } catch (error) {
+      complete = false;
+      failure = error.message;
+      break;
+    }
+    const rows = body?.data ?? [];
+    rows.forEach((row) => {
+      const track = normaliseDeezerTrack(row, albumInfo);
+      if (track) tracks.push(track);
+    });
+    onProgress?.({ loaded: tracks.length, total });
+    if (!body?.next || !rows.length) break;
+    index += rows.length;
+  }
+
+  return { name, tracks, total, complete, failure };
+}
+
+// ---- Discovery -------------------------------------------------------------
+
+/** The Deezer artist behind a track (resolving the track first if needed). */
+export async function artistForTrack(track) {
+  const match = track.deezerId ? { deezerId: track.deezerId } : await resolve(track);
+  if (!match?.deezerId) return null;
+  const row = await jsonp(`/track/${match.deezerId}`);
+  return row?.artist?.id ? { id: row.artist.id, name: row.artist.name } : null;
+}
+
+/** Artists Deezer considers similar. */
+export async function relatedArtists(artistId, limit = 8) {
+  const data = await jsonp(`/artist/${artistId}/related?limit=${limit}`);
+  return (data?.data ?? []).map((a) => ({ id: a.id, name: a.name }));
+}
+
+/** Deezer's "artist radio": tracks by the artist and similar artists. */
+export async function artistRadio(artistId, limit = 25) {
+  const data = await jsonp(`/artist/${artistId}/radio?limit=${limit}`);
+  return (data?.data ?? []).map((row) => ({ ...normaliseDeezerTrack(row), previewUrl: row.preview || null })).filter((t) => t.deezerId);
+}
+
+/** An artist's most popular tracks. */
+export async function artistTop(artistId, limit = 5) {
+  const data = await jsonp(`/artist/${artistId}/top?limit=${limit}`);
+  return (data?.data ?? []).map((row) => ({ ...normaliseDeezerTrack(row), previewUrl: row.preview || null })).filter((t) => t.deezerId);
+}
+
+// ---- Artwork ---------------------------------------------------------------
+
+/**
+ * Album cover for a track, checked against the title and artist so a search
+ * hit for a different song never supplies the art. The same song on another
+ * release (single vs album) is fine — a cover is a cover.
+ */
+export async function findCover({ deezerId, artist, title }) {
+  const { titleCore, artistTokens } = await import('../lib/trackMatch.js');
+  const wantTitle = titleCore(title);
+  const wantArtists = artistTokens(artist);
+  const plausible = (row) => {
+    if (!row?.album) return false;
+    const core = titleCore(row.title);
+    const titleOk = core && wantTitle && (core === wantTitle || core.startsWith(wantTitle) || wantTitle.startsWith(core));
+    const theirs = artistTokens([row.artist?.name, ...(row.contributors ?? []).map((c) => c.name)].join(', '));
+    return titleOk && wantArtists.some((a) => theirs.includes(a));
+  };
+  const cover = (row) => row.album.cover_medium || row.album.cover || null;
+
+  if (deezerId) {
+    const row = await jsonp(`/track/${deezerId}`).catch((error) => {
+      if (transient(error)) throw error;
+      return null;
+    });
+    if (plausible(row)) return cover(row);
+  }
+  if (!artist || !title) return null;
+  for (const query of [`artist:"${artist}" track:"${title}"`, `${artist} ${title}`]) {
+    let found;
+    try {
+      found = await jsonp(`/search?limit=5&q=${encodeURIComponent(query)}`);
+    } catch (error) {
+      if (transient(error)) throw error;
+      continue;
+    }
+    const hit = (found?.data ?? []).find(plausible);
+    if (hit) return cover(hit);
+  }
+  return null;
+}
+
+/** Rate limits and network failures mean "try later", not "no cover exists". */
+function transient(error) {
+  return error?.isQuota || /timed out|request failed/i.test(error?.message ?? '');
 }

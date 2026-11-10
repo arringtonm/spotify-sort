@@ -2,6 +2,9 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import router from './router.js';
-import vuetify from './plugins/vuetify';
+import './styles/main.css';
 
-createApp(App).use(createPinia()).use(router).use(vuetify).mount('#app');
+// Desktop app (Tauri): lets CSS make room for the window's traffic lights.
+if ('__TAURI_INTERNALS__' in window) document.documentElement.classList.add('desktop-app');
+
+createApp(App).use(createPinia()).use(router).mount('#app');

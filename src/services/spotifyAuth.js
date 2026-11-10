@@ -12,6 +12,8 @@
  *    an accepted trade-off for a locally-run personal tool with no backend.
  */
 
+import { isTauri, invoke, once, nativeFetch } from '../platform/index.js';
+
 const AUTH_HOST = 'https://accounts.spotify.com';
 const STORAGE_KEY = 'spotify-sort.tokens';
 const VERIFIER_KEY = 'spotify-sort.pkce-verifier';
@@ -53,6 +55,43 @@ async function challengeFor(verifier) {
   return base64url(digest);
 }
 
+/**
+ * The PKCE verifier is keyed by `state` in localStorage rather than held in
+ * sessionStorage. On iOS an installed web app can hand the Spotify login to a
+ * separate browser context and get the redirect back in a fresh session, where
+ * sessionStorage is empty. Keying by state still binds the response to the
+ * request (CSRF), and entries expire after ten minutes.
+ */
+const PENDING_KEY = 'spotify-sort.pkce-pending';
+const PENDING_TTL_MS = 10 * 60 * 1000;
+
+function readPending() {
+  try {
+    const all = JSON.parse(localStorage.getItem(PENDING_KEY)) || {};
+    const now = Date.now();
+    return Object.fromEntries(Object.entries(all).filter(([, v]) => now - v.at < PENDING_TTL_MS));
+  } catch {
+    return {};
+  }
+}
+
+function savePending(state, verifier) {
+  const all = readPending();
+  all[state] = { verifier, at: Date.now() };
+  localStorage.setItem(PENDING_KEY, JSON.stringify(all));
+  // Older builds used sessionStorage; clear any leftovers.
+  sessionStorage.removeItem(VERIFIER_KEY);
+  sessionStorage.removeItem(STATE_KEY);
+}
+
+function takePending(state) {
+  const all = readPending();
+  const entry = state ? all[state] : null;
+  if (entry) delete all[state];
+  localStorage.setItem(PENDING_KEY, JSON.stringify(all));
+  return entry?.verifier ?? null;
+}
+
 function readTokens() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null;
@@ -85,7 +124,7 @@ export function isLoggedIn() {
  * common way this flow fails.
  *
  * The subtle one is the origin check. The PKCE verifier and CSRF state live in
- * sessionStorage, which is per-origin — and `http://localhost:5173` and
+ * localStorage, which is per-origin — and `http://localhost:5173` and
  * `http://127.0.0.1:5173` are *different origins*. Browse to one while the
  * redirect URI points at the other and Spotify will happily authorise you, then
  * bounce you to an origin where the verifier does not exist, failing at the last
@@ -103,7 +142,9 @@ export function redirectDiagnostics() {
     redirectUri: REDIRECT_URI,
     currentOrigin,
     registeredOrigin,
-    originMatches: registeredOrigin === currentOrigin,
+    // The desktop app catches the redirect in its own sign-in window, so the
+    // page's origin (tauri://localhost) never has to match.
+    originMatches: isTauri || registeredOrigin === currentOrigin,
     browsingLocalhost: currentOrigin.includes('localhost'),
   };
 }
@@ -131,8 +172,7 @@ export async function buildAuthorizeUrl() {
 
   const verifier = randomString();
   const state = randomString(16);
-  sessionStorage.setItem(VERIFIER_KEY, verifier);
-  sessionStorage.setItem(STATE_KEY, state);
+  savePending(state, verifier);
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -147,13 +187,25 @@ export async function buildAuthorizeUrl() {
   return `${AUTH_HOST}/authorize?${params}`;
 }
 
-/** Send the browser to Spotify's consent screen. */
+/**
+ * Send the browser to Spotify's consent screen. In the desktop app the consent
+ * page opens in its own window; this resolves once that sign-in completes.
+ * Returns true when signed in without leaving the page.
+ */
 export async function login() {
-  window.location.assign(await buildAuthorizeUrl());
+  const url = await buildAuthorizeUrl();
+  if (!isTauri) {
+    window.location.assign(url);
+    return false;
+  }
+  const callback = once('spotify-callback');
+  await invoke('spotify_sign_in', { url, redirect: REDIRECT_URI });
+  return handleRedirect(await callback);
 }
 
 async function postToken(body) {
-  const response = await fetch(`${AUTH_HOST}/api/token`, {
+  // Native in the desktop app: its tauri:// origin is not one Spotify expects.
+  const response = await nativeFetch(`${AUTH_HOST}/api/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...body }),
@@ -174,28 +226,28 @@ async function postToken(body) {
  * Complete the redirect back from Spotify. Returns true if a login was consumed.
  * Safe to call on every page load.
  */
-export async function handleRedirect() {
-  const url = new URL(window.location.href);
+export async function handleRedirect(href = window.location.href) {
+  const fromPage = href === window.location.href;
+  const url = new URL(href);
   const code = url.searchParams.get('code');
   const returnedState = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
   if (error) {
-    scrubUrl(url);
+    if (fromPage) scrubUrl(url);
     throw new Error(`Spotify authorisation denied: ${error}`);
   }
   if (!code) return false;
 
-  const expectedState = sessionStorage.getItem(STATE_KEY);
-  const verifier = sessionStorage.getItem(VERIFIER_KEY);
-  sessionStorage.removeItem(STATE_KEY);
-  sessionStorage.removeItem(VERIFIER_KEY);
-  scrubUrl(url);
+  const verifier = takePending(returnedState);
+  if (fromPage) scrubUrl(url);
 
-  if (!expectedState || returnedState !== expectedState) {
-    throw new Error('OAuth state mismatch — aborting.');
+  if (!verifier) {
+    throw new Error(
+      'This sign-in was started somewhere else (another tab, or Safari instead of the ' +
+        'installed app), so it can’t be finished here. Start the sign-in again from this window.'
+    );
   }
-  if (!verifier) throw new Error('Missing PKCE verifier — start the login again.');
 
   writeTokens(
     await postToken({
@@ -214,12 +266,13 @@ function scrubUrl(url) {
 }
 
 /** A valid access token, refreshing if needed. Throws ReauthRequired when dead. */
-export async function getAccessToken() {
+export async function getAccessToken({ force = false } = {}) {
   const tokens = readTokens();
   if (!tokens?.refreshToken) throw new ReauthRequired('Not signed in to Spotify.');
 
-  // 30s of slack so a token cannot expire mid-flight.
-  if (tokens.accessToken && Date.now() < tokens.expiresAt - 30_000) {
+  // 30s of slack so a token cannot expire mid-flight. `force` is for a 401: the
+  // server has rejected a token we still believe is valid, so refresh regardless.
+  if (!force && tokens.accessToken && Date.now() < tokens.expiresAt - 30_000) {
     return tokens.accessToken;
   }
 

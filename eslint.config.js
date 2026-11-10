@@ -1,14 +1,12 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import pluginVue from 'eslint-plugin-vue';
-import pluginVuetify from 'eslint-plugin-vuetify';
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/gen/**'] },
 
   js.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
-  ...pluginVuetify.configs['flat/base'],
 
   {
     files: ['**/*.{js,vue}'],
@@ -20,7 +18,13 @@ export default [
   },
 
   {
-    files: ['test/**/*.js', 'scripts/**/*.mjs', 'vite.config.js', 'eslint.config.js'],
+    // UI primitives are thin wrappers named after what they render.
+    files: ['src/components/ui/**/*.vue'],
+    rules: { 'vue/multi-word-component-names': 'off' },
+  },
+
+  {
+    files: ['test/**/*.js', 'scripts/**/*.mjs', 'vite.config.js', 'vite-local-libraries.js', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
 ];

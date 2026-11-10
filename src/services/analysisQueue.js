@@ -1,5 +1,5 @@
 import { analyseTrack, applyEnrichment, releaseAnalysisWorkers, putEntry, getMany } from './enrich.js';
-import { patchTracks, PENDING, DONE, FAILED, UNAVAILABLE, MAX_ATTEMPTS } from './db.js';
+import { patchTracks, putWaveform, PENDING, DONE, FAILED, UNAVAILABLE, MAX_ATTEMPTS } from './db.js';
 
 /**
  * Resumable analysis.
@@ -20,6 +20,9 @@ import { patchTracks, PENDING, DONE, FAILED, UNAVAILABLE, MAX_ATTEMPTS } from '.
  */
 
 const FLUSH_EVERY = 10;
+
+/** Outcomes worth remembering across runs; transient failures are not. */
+const CACHEABLE = new Set(['ok', 'partial', 'no-match', 'no-preview']);
 
 /** Map an analysis outcome onto a durable per-track state. */
 function stateFor(entry, attempts) {
@@ -86,11 +89,22 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
           cursor += 1;
           const attempts = (track.attempts ?? 0) + 1;
 
+          // A cached failure is not a result: replaying it would make "Retry failed"
+          // a no-op. Only definitive outcomes are cached and reused.
           let entry = cached.get(track.id) ?? null;
+          if (entry && !CACHEABLE.has(entry.status)) entry = null;
+          // A track that now carries its own preview (e.g. re-imported from a
+          // Spotify embed page) deserves another try at a cached dead end.
+          if (entry && track.previewUrl && (entry.status === 'no-match' || entry.status === 'no-preview')) {
+            entry = null;
+          }
           if (!entry) {
             try {
               entry = await analyseTrack(track);
-              await putEntry(entry).catch(() => {});
+              const { waveform, ...rest } = entry;
+              entry = rest;
+              if (waveform) await putWaveform(track.id, waveform).catch(() => {});
+              if (CACHEABLE.has(entry.status)) await putEntry(entry).catch(() => {});
             } catch (error) {
               entry = { id: track.id, status: 'failed', error: String(error?.message || error) };
             }
@@ -106,7 +120,9 @@ export function createAnalysisRun({ concurrency = 4 } = {}) {
             tempoSource: merged.tempoSource ?? null,
             keySource: merged.keySource ?? null,
             keyConfident: merged.keyConfident ?? null,
+            keyStrength: merged.keyStrength ?? null,
             deezerId: entry?.deezerId ?? null,
+            features: merged.features ?? null,
             analysisState: state,
             attempts,
             lastError: entry?.error ?? null,

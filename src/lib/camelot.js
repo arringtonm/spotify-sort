@@ -92,7 +92,14 @@ export function tempoRelation(seedTempo, trackTempo, tolerance = 3) {
  * still be harmonically compatible with the previous track, so the whole path
  * mixes, not just the first hop.
  */
-export function buildSet(tracks, seed, { length = 10, bpmTolerance = 3, direction = 1 } = {}) {
+export function buildSet(
+  tracks,
+  seed,
+  { length = 10, bpmTolerance = 3, direction = 1, penalty = () => 0 } = {}
+) {
+  // Anything other than a clear ramp means "hold". An empty toggle used to
+  // arrive as undefined and silently wound the set down.
+  direction = direction > 0 ? 1 : direction < 0 ? -1 : 0;
   const used = new Set([seed.id]);
   const path = [{ track: seed, relation: 'seed' }];
   let current = seed;
@@ -108,9 +115,11 @@ export function buildSet(tracks, seed, { length = 10, bpmTolerance = 3, directio
       direction === 0 ? true : direction > 0 ? t.tempo >= current.tempo : t.tempo <= current.tempo
     );
     const pool = forward.length ? forward : candidates;
-    const next = pool.reduce((best, t) =>
-      Math.abs(t.tempo - current.tempo) < Math.abs(best.tempo - current.tempo) ? t : best
-    );
+    // `penalty(track, previous)` lets the caller steer the choice (uncertain keys,
+    // genre and energy fit) without excluding anything: it's added to the tempo
+    // step as a cost.
+    const cost = (t) => Math.abs(t.tempo - current.tempo) + penalty(t, current);
+    const next = pool.reduce((best, t) => (cost(t) < cost(best) ? t : best));
 
     path.push({ track: next, relation: tempoRelation(current.tempo, next.tempo, bpmTolerance) });
     used.add(next.id);

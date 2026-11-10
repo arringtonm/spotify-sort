@@ -1,4 +1,6 @@
-import { getAccessToken } from './spotifyAuth.js';
+import { getAccessToken, isLoggedIn } from './spotifyAuth.js';
+import { isTauri, nativeFetch } from '../platform/index.js';
+import { extractEmbedTracks } from '../lib/spotifyEmbed.js';
 
 const API = 'https://api.spotify.com/v1';
 
@@ -7,32 +9,65 @@ const API = 'https://api.spotify.com/v1';
  * 429 with Retry-After (quota is pooled per developer account since Feb 2026),
  * and 401 once an access token lapses mid-session.
  */
-async function request(path, init = {}, { retries = 3 } = {}) {
-  const token = await getAccessToken();
+async function request(path, init = {}, { rateRetries = 3, authRetried = false } = {}) {
+  const token = await getAccessToken({ force: authRetried });
   const response = await fetch(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) },
   });
 
-  if (response.status === 429 && retries > 0) {
+  if (response.status === 429 && rateRetries > 0) {
     const wait = Number(response.headers.get('Retry-After') || 2);
     await new Promise((r) => setTimeout(r, (wait + 0.5) * 1000));
-    return request(path, init, { retries: retries - 1 });
+    return request(path, init, { rateRetries: rateRetries - 1, authRetried });
   }
-  if (response.status === 401 && retries > 0) {
-    return request(path, init, { retries: retries - 1 });
-  }
-  if (response.status === 403) {
-    throw new Error(
-      'Spotify returned 403. In development mode only allowlisted accounts (max 5) ' +
-        'can use this app, and the owner account must hold Premium.'
-    );
+  // One retry with a forced refresh. Retrying with the same cached token, as this
+  // used to, can only fail the same way.
+  if (response.status === 401 && !authRetried) {
+    return request(path, init, { rateRetries, authRetried: true });
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(`Spotify ${response.status}: ${body.error?.message ?? response.statusText}`);
+    throw new SpotifyError(response.status, body.error?.message ?? response.statusText, path);
   }
   return response.status === 204 ? null : response.json();
+}
+
+/**
+ * A Spotify failure with a message a person can act on. A 403 used to be reported
+ * as "your account is not allowlisted" no matter what, which was wrong for the most
+ * common case: a playlist the user does not own.
+ */
+export class SpotifyError extends Error {
+  constructor(status, detail, path = '') {
+    super(describeFailure(status, detail, path));
+    this.name = 'SpotifyError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+function describeFailure(status, detail, path) {
+  const playlist = /^\/playlists\//.test(path);
+  if (status === 403 && playlist) {
+    return (
+      'Spotify only shares the tracks of playlists you own or collaborate on. ' +
+      'Copy this playlist into one of your own, or paste a Deezer link instead.'
+    );
+  }
+  if (status === 404 && playlist) {
+    return (
+      'Spotify would not return that playlist. Playlists made by Spotify itself ' +
+      '(editorial and personalised mixes) are not available to apps like this one.'
+    );
+  }
+  if (status === 403) {
+    return (
+      'Spotify returned 403. In development mode only allowlisted accounts (max 5) ' +
+      'can use this app, and the owner account must hold Premium.'
+    );
+  }
+  return `Spotify ${status}: ${detail}`;
 }
 
 /** Smallest artwork at least `min` px wide — table rows only need a thumbnail. */
@@ -137,7 +172,8 @@ export function getMyPlaylists(onProgress) {
     return all.map((p) => ({
       id: p.id,
       name: p.name,
-      trackCount: p.tracks?.total ?? 0,
+      // Renamed to `items` in the Feb 2026 shape.
+      trackCount: p.items?.total ?? p.tracks?.total ?? 0,
       owner: p.owner?.display_name ?? null,
     }));
   });
@@ -155,6 +191,166 @@ export async function getPlaylistTracks(playlistId, onProgress) {
     return paginate(`/playlists/${playlistId}/tracks?limit=50`, onProgress);
   }
   return report;
+}
+
+let me = null;
+async function currentUserId() {
+  if (!me) me = await request('/me');
+  return me.id;
+}
+
+/**
+ * Playlist metadata plus whether the API will hand over its tracks. Development
+ * mode only returns items for playlists the user owns or collaborates on.
+ */
+export async function getPlaylistAccess(playlistId) {
+  const meta = await request(
+    `/playlists/${playlistId}?fields=name,collaborative,owner(id,display_name),images`
+  );
+  const owned = meta.owner?.id && meta.owner.id === (await currentUserId().catch(() => null));
+  return {
+    name: meta.name ?? null,
+    owner: meta.owner?.display_name ?? null,
+    readable: Boolean(owned || meta.collaborative),
+  };
+}
+
+/**
+ * Album tracks come back "simplified": no album object and no ISRC. The album
+ * fields are filled in from the parent, and ISRCs are looked up one by one for
+ * small albums (Spotify removed the batch /tracks endpoint in Feb 2026). Larger
+ * albums fall back to Deezer's artist+title search during analysis.
+ */
+export async function getAlbumTracks(albumId, onProgress, { isrcLimit = 30 } = {}) {
+  const album = await request(`/albums/${albumId}`);
+  const rows = [...(album.tracks?.items ?? [])];
+  let next = album.tracks?.next;
+  while (next) {
+    const page = await request(next.replace(API, ''));
+    rows.push(...(page.items ?? []));
+    next = page.next;
+  }
+
+  const parent = { name: album.name, images: album.images };
+  const tracks = rows.map((row) => normaliseTrack({ ...row, album: parent })).filter(Boolean);
+
+  if (tracks.length <= isrcLimit) {
+    let done = 0;
+    for (const track of tracks) {
+      const full = await request(`/tracks/${track.id}`).catch(() => null);
+      track.isrc = full?.external_ids?.isrc ?? null;
+      done += 1;
+      onProgress?.({ loaded: done, total: tracks.length });
+    }
+  }
+  return {
+    name: `${(album.artists || []).map((a) => a.name).join(', ')} – ${album.name}`,
+    tracks,
+    total: album.total_tracks ?? tracks.length,
+    skipped: rows.length - tracks.length,
+    complete: true,
+  };
+}
+
+export async function getTrack(trackId) {
+  const track = normaliseTrack(await request(`/tracks/${trackId}`));
+  if (!track) throw new Error('Spotify could not find that track.');
+  return { name: `${track.artist} – ${track.title}`, tracks: [track], total: 1, complete: true };
+}
+
+/**
+ * The unofficial route: read a public embed page through a proxy (the page sends
+ * no CORS headers). In development Vite proxies /spotify-embed; in production
+ * VITE_EMBED_PROXY_URL points at the Cloudflare Worker in proxy/.
+ */
+export const EMBED_PROXY = isTauri
+  ? // The desktop app isn't bound by CORS, so it reads Spotify's page directly.
+    'https://open.spotify.com/embed'
+  : import.meta.env.VITE_EMBED_PROXY_URL || (import.meta.env.DEV ? '/spotify-embed' : '');
+
+export async function getEmbedTracks(type, id) {
+  if (!EMBED_PROXY) throw new Error('No embed proxy configured.');
+  const response = await nativeFetch(`${EMBED_PROXY.replace(/\/$/, '')}/${type}/${id}`);
+  if (response.status === 404) {
+    throw new Error("Spotify couldn't find that link. Check that it's public.");
+  }
+  if (!response.ok) throw new Error(`Couldn't read the public Spotify page (${response.status}).`);
+  const isJson = (response.headers.get('content-type') || '').includes('json');
+  const page = isJson ? await response.json() : extractEmbedTracks(await response.text());
+  const tracks = page.tracks.map((t) => ({
+    id: t.id,
+    uri: t.uri,
+    artist: t.artist,
+    artistIds: [],
+    title: t.title,
+    album: null,
+    artwork: null,
+    isrc: null,
+    durationMs: t.durationMs,
+    previewUrl: t.previewUrl ?? null,
+    genres: [],
+    tempo: null,
+    pitchClass: null,
+    key: null,
+    mode: null,
+  }));
+  return { name: page.name, owner: page.owner, tracks, total: null, complete: true, unofficial: true };
+}
+
+/** Run `fn` over items with at most `limit` in flight, keeping input order. */
+async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+  return results;
+}
+
+/**
+ * Many individual tracks, e.g. a whole playlist copied from the Spotify desktop
+ * app. Signed in, each comes from the Web API (with ISRC); signed out, from the
+ * track's public embed page. Spotify removed the batch /tracks endpoint for
+ * development-mode apps in Feb 2026, so this is one request per track, kept to
+ * a few at a time to stay clear of rate limits.
+ */
+export async function getTracksByIds(ids, onProgress) {
+  const viaApi = isLoggedIn();
+  if (!viaApi && !EMBED_PROXY) {
+    throw new Error('Sign in with Spotify to import a list of tracks.');
+  }
+  let done = 0;
+  let failure = null;
+  const rows = await mapLimit(ids, viaApi ? 3 : 4, async (id) => {
+    let track = null;
+    try {
+      if (viaApi) track = normaliseTrack(await request(`/tracks/${id}`));
+      else track = (await getEmbedTracks('track', id)).tracks[0] ?? null;
+    } catch (error) {
+      failure = error.message;
+    }
+    done += 1;
+    onProgress?.({ loaded: done, total: ids.length });
+    return track;
+  });
+  const tracks = rows.filter(Boolean);
+  return {
+    name: `${ids.length} pasted tracks`,
+    tracks,
+    total: ids.length,
+    skipped: ids.length - tracks.length,
+    complete: tracks.length === ids.length,
+    failure: tracks.length ? null : failure,
+  };
+}
+
+export function signedIn() {
+  return isLoggedIn();
 }
 
 /** Accept a playlist URL, a spotify: URI, or a bare ID. */
