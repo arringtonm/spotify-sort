@@ -80,3 +80,58 @@ export function seratoPatch(existing, st, own = false) {
   if (own) Object.assign(patch, { artist: st.artist, title: st.title, album: st.album ?? existing.album });
   return patch;
 }
+
+const TEMPO_FIELDS = ['tempo', 'tempoSource', 'tempoConfidence'];
+const KEY_FIELDS = ['key', 'pitchClass', 'mode', 'keySource', 'keyStrength', 'keyConfident'];
+
+/**
+ * Find Serato-only tracks that are the same song as a track from somewhere
+ * else (usually Spotify) and plan folding each into it — whichever order the
+ * libraries were imported in. Without this, importing Spotify *after* Serato
+ * leaves two separate copies and "In both" stays empty.
+ *
+ * The non-Serato track survives (its Spotify id is what playlists and exports
+ * need) and absorbs the Serato file, Serato's BPM/key, and anything measured
+ * on the Serato copy that it lacks (energy, artwork).
+ *
+ * Pure: returns [{ from, to, patch }].
+ */
+export function planSourceLinks(tracks) {
+  const seratoOnly = tracks.filter((t) => t.id.startsWith('serato:') && t.serato?.path);
+  if (!seratoOnly.length) return [];
+  const candidates = tracks.filter((t) => !t.id.startsWith('serato:') && !t.serato?.path);
+  if (!candidates.length) return [];
+  const find = createMatcher(candidates);
+  const claimed = new Set();
+  const merges = [];
+  for (const ser of seratoOnly) {
+    const match = find(ser.artist, ser.title, ser.durationMs);
+    if (!match || claimed.has(match.id)) continue;
+    claimed.add(match.id);
+    merges.push({ from: ser.id, to: match.id, patch: absorbPatch(match, ser) });
+  }
+  return merges;
+}
+
+function absorbPatch(keep, ser) {
+  // Serato's own full-track BPM/key get the usual priority; values this app
+  // measured on the Serato copy only fill gaps.
+  const patch = seratoPatch(keep, {
+    ...ser,
+    tempo: ser.tempoSource === 'serato' ? ser.tempo : null,
+    key: ser.keySource === 'serato' ? ser.key : null,
+  });
+  if (patch.tempo == null && keep.tempo == null && ser.tempo != null) {
+    TEMPO_FIELDS.forEach((f) => ser[f] !== undefined && (patch[f] = ser[f]));
+  }
+  if (patch.key == null && keep.key == null && ser.key != null) {
+    KEY_FIELDS.forEach((f) => ser[f] !== undefined && (patch[f] = ser[f]));
+  }
+  if (!keep.features && ser.features) patch.features = ser.features;
+  if (!keep.artwork && ser.artwork) Object.assign(patch, { artwork: ser.artwork, artworkSource: ser.artworkSource ?? null });
+  if (!keep.genres?.length && ser.genres?.length) patch.genres = ser.genres;
+  const tempo = patch.tempo ?? keep.tempo;
+  const key = patch.key ?? keep.key;
+  if (tempo != null && key != null) patch.analysisState = 'done';
+  return patch;
+}

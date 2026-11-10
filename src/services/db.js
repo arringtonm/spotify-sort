@@ -232,6 +232,18 @@ export async function countStates() {
   });
 }
 
+export async function deleteTracks(ids) {
+  if (!ids.length) return;
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(TRACKS, 'readwrite');
+    const store = transaction.objectStore(TRACKS);
+    ids.forEach((id) => store.delete(id));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 export const clearTracks = () => run(TRACKS, 'readwrite', (store) => store.clear());
 
 // ------------------------------------------------------------ enrichment

@@ -378,6 +378,18 @@ export const useCratesStore = defineStore('crates', {
      * song imported today is flagged if it was in a mix years ago.
      * Returns how many crates changed.
      */
+    /** Point crates at a track's new id after two copies were merged. */
+    remapTracks(idMap) {
+      let changed = 0;
+      for (const crate of this.crates) {
+        if (!crate.trackIds.some((id) => idMap.has(id))) continue;
+        crate.trackIds = [...new Set(crate.trackIds.map((id) => idMap.get(id) ?? id))];
+        changed++;
+      }
+      if (changed) this.persist();
+      return changed;
+    },
+
     relinkMixtapes(tracks) {
       const withEntries = this.crates.filter((c) => c.entries?.length);
       if (!withEntries.length) return 0;

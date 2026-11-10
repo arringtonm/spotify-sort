@@ -409,6 +409,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<()> {
     let mix = SubmenuBuilder::new(app, "Mix")
         .item(&item("mix-playing", "Mix From Playing Track", Some("CmdOrCtrl+E"))?)
         .item(&item("mix-back", "Back to Previous Track", Some("CmdOrCtrl+["))?)
+        .item(&item("mix-play-seed", "Play Mixing-From Track", Some("CmdOrCtrl+Shift+P"))?)
         .item(&item("discover", "Find New Tracks…", Some("CmdOrCtrl+Shift+F"))?)
         .separator()
         .item(&item("mix-next", "Next Track Mode", Some("CmdOrCtrl+Shift+N"))?)

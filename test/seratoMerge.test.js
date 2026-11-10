@@ -69,3 +69,44 @@ test('source filters', () => {
   assert.equal(matchesSource(se, 'spotify'), false);
   assert.equal(matchesSource(se, 'all'), true);
 });
+
+test('Spotify imported after Serato: the two copies are planned to merge', async () => {
+  const { planSourceLinks } = await import('../src/lib/seratoMerge.js');
+  const ser = serato('/Music/Calico.mp3', '1tbsp', 'Calico', {
+    tempo: 126, tempoSource: 'serato', key: 'C', pitchClass: 0, mode: 'min', keySource: 'serato',
+    features: { danceability: 1.5 }, artwork: 'data:x', artworkSource: 'file',
+  });
+  const spotify = { id: '4uLU6hMCjMI75M1A2tKUQC', artist: '1tbsp', title: 'Calico', tempo: 126.1, key: 'C#', keySource: 'analysis', artwork: 'https://i.scdn.co/x', sources: ['spotify'] };
+  const other = { id: '1111111111111111111111', artist: 'Someone', title: 'Else', sources: ['spotify'] };
+  const merges = planSourceLinks([ser, spotify, other]);
+  assert.equal(merges.length, 1);
+  const [{ from, to, patch }] = merges;
+  assert.equal(from, ser.id);
+  assert.equal(to, spotify.id);
+  assert.equal(patch.tempo, 126);
+  assert.equal(patch.key, 'C');
+  assert.equal(patch.keySource, 'serato');
+  assert.equal(patch.serato.path, '/Music/Calico.mp3');
+  assert.deepEqual(patch.features, { danceability: 1.5 });
+  assert.equal(patch.artwork, undefined, 'keeps Spotify artwork');
+  assert.ok(matchesSource({ ...spotify, ...patch }, 'both'));
+});
+
+test('source links: analysis from the Serato copy only fills gaps, and nothing links twice', async () => {
+  const { planSourceLinks } = await import('../src/lib/seratoMerge.js');
+  const a = serato('/a.mp3', 'Artist', 'Song', { tempo: 120, tempoSource: 'analysis', key: 'A', keySource: 'analysis' });
+  const b = serato('/b.mp3', 'Artist', 'Song', { tempo: 120, tempoSource: 'analysis', key: 'A', keySource: 'analysis' });
+  const sp = { id: '2222222222222222222222', artist: 'Artist', title: 'Song', tempo: 121, key: 'B', keySource: 'analysis', sources: ['spotify'] };
+  const merges = planSourceLinks([a, b, sp]);
+  assert.equal(merges.length, 1);
+  assert.equal(merges[0].patch.tempo, undefined);
+  assert.equal(merges[0].patch.key, undefined);
+  assert.deepEqual(planSourceLinks([{ ...sp, serato: { path: '/a.mp3' } }, b]), []);
+});
+
+test('BPM is shown as a whole number', async () => {
+  const { formatTempo } = await import('../src/lib/trackInfo.js');
+  assert.equal(formatTempo(126.1), '126');
+  assert.equal(formatTempo(127.5), '128');
+  assert.equal(formatTempo(null), '—');
+});

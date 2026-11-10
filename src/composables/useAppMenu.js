@@ -48,6 +48,7 @@ export function useAppMenu() {
     'browse-crates': () => (ui.crateBrowserOpen.value = true),
     'mix-playing': () => player.track && canSeed(player.track) && mixFrom(player.track),
     'mix-back': () => filters.back(),
+    'mix-play-seed': () => filters.seedTrack && player.toggle(filters.seedTrack),
     discover: () => {
       const track = filters.seedTrack ?? player.track;
       if (track && canSeed(track)) ui.discoverSeeds.value = [track];

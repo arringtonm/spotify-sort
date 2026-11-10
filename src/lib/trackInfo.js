@@ -64,7 +64,9 @@ export function keyRisk(track) {
 
 export function formatTempo(tempo) {
   if (tempo == null) return '—';
-  return Number.isInteger(tempo) ? String(tempo) : tempo.toFixed(1);
+  // Whole numbers: a tenth of a BPM is below what a preview can measure, and
+  // DJ software shows whole BPM too.
+  return String(Math.round(tempo));
 }
 
 export function keyName(track) {

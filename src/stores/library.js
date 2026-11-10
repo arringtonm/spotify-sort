@@ -27,6 +27,10 @@ import {
   clearTracks,
   setMeta,
   getMeta,
+  deleteTracks,
+  getAllOverrides,
+  putOverride,
+  deleteOverride,
   PENDING,
   FAILED,
   UNAVAILABLE,
@@ -42,7 +46,7 @@ import { useOverridesStore } from './overrides.js';
 import { useCratesStore } from './crates.js';
 import { useToastStore } from './toasts.js';
 import { parseSeratoDatabase, parseSeratoCrate } from '../lib/seratoDb.js';
-import { planSeratoImport } from '../lib/seratoMerge.js';
+import { planSeratoImport, planSourceLinks } from '../lib/seratoMerge.js';
 import { createMatcher } from '../lib/trackMatch.js';
 import { findSeratoLibraries, readSeratoLibrary, canReadLocalLibraries } from '../services/localLibraries.js';
 import { useAuthStore } from './auth.js';
@@ -150,6 +154,7 @@ export const useLibraryStore = defineStore('library', {
           const meta = await getMeta('library');
           this.origin = meta?.origin ?? 'spotify';
           this.originDetail = meta?.detail ?? null;
+          await this.linkSources().catch(() => {});
           await this.refreshCounts();
           this.backfillKeyStrength();
           const { pending, failed, unavailable } = this.counts;
@@ -175,6 +180,36 @@ export const useLibraryStore = defineStore('library', {
      * cache. Copy it onto tracks analysed before it was stored, so the UI can
      * show how sure each estimate is.
      */
+    /**
+     * Merge Serato-only tracks into the same song from Spotify (or a link or
+     * file import), so each song is one track marked as in both. Crates and
+     * key corrections follow the surviving track. Returns how many merged.
+     */
+    async linkSources() {
+      const merges = planSourceLinks(this.raw);
+      if (!merges.length) return 0;
+      await patchTracks(merges.map(({ to, patch }) => ({ id: to, patch })));
+      const idMap = new Map(merges.map(({ from, to }) => [from, to]));
+      const overrides = await getAllOverrides();
+      let moved = 0;
+      for (const [from, to] of idMap) {
+        const o = overrides.get(from);
+        if (!o) continue;
+        if (!overrides.has(to)) await putOverride({ ...o, id: to });
+        await deleteOverride(from);
+        moved++;
+      }
+      if (moved) {
+        const store = useOverridesStore();
+        store.loaded = false;
+        await store.load();
+      }
+      useCratesStore().remapTracks(idMap);
+      await deleteTracks([...idMap.keys()]);
+      this.raw = await getAllTracks();
+      return merges.length;
+    },
+
     async backfillKeyStrength() {
       const missing = this.raw.filter((t) => t.keySource === 'analysis' && t.keyStrength == null);
       if (!missing.length) return;
@@ -265,6 +300,8 @@ export const useLibraryStore = defineStore('library', {
       this.warning = '';
       try {
         const result = await run();
+        // Whatever arrived, join it to the same song from the other library.
+        await this.linkSources().catch(() => {});
         if (this.origin !== 'demo') requestPersistence();
         if (this.job?.status === 'running') {
           // Anything never reached (e.g. nothing to analyse) is skipped, not pending.

@@ -13,9 +13,15 @@
       class="flex gap-3"
       :class="sidebar ? 'items-start' : 'items-center'"
     >
-      <span
-        class="relative shrink-0 overflow-hidden rounded-lg bg-surface-3 shadow-sm"
+      <!-- The seed is always one click from playing, so you can A/B it
+           against whichever suggestion you just tried. -->
+      <button
+        type="button"
+        class="group/seed relative shrink-0 overflow-hidden rounded-lg bg-surface-3 shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         :class="sidebar ? 'size-28' : 'size-16'"
+        :aria-label="`${seedPlaying ? 'Pause' : 'Play'} ${seed.title}`"
+        title="Play the track you're mixing from (⇧⌘P)"
+        @click="player.toggle(seed)"
       >
         <img
           v-if="seed.artwork"
@@ -28,7 +34,32 @@
           class="absolute inset-0 m-auto size-6 text-subtle"
           aria-hidden="true"
         />
-      </span>
+        <span
+          class="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover/seed:opacity-100"
+          :class="(seedPlaying || seedLoading) && 'opacity-100'"
+          aria-hidden="true"
+        />
+        <span
+          class="absolute flex items-center justify-center rounded-full bg-accent text-accent-fg shadow-md transition-transform group-hover/seed:scale-110"
+          :class="sidebar ? 'bottom-2 right-2 size-9' : 'bottom-1 right-1 size-7'"
+          aria-hidden="true"
+        >
+          <span
+            v-if="seedLoading"
+            class="size-3.5 animate-spin rounded-full border-2 border-current border-r-transparent"
+          />
+          <Pause
+            v-else-if="seedPlaying"
+            class="fill-current"
+            :class="sidebar ? 'size-4' : 'size-3.5'"
+          />
+          <Play
+            v-else
+            class="translate-x-px fill-current"
+            :class="sidebar ? 'size-4' : 'size-3.5'"
+          />
+        </span>
+      </button>
       <div class="min-w-0 flex-1">
         <div class="flex items-start gap-1">
           <p class="min-w-0 flex-1 pt-0.5 text-xs font-medium tracking-wide text-accent uppercase">
@@ -261,6 +292,8 @@ import { computed } from 'vue';
 import {
   X,
   Disc3,
+  Play,
+  Pause,
   ListMusic,
   ListOrdered,
   TrendingUp,
@@ -283,6 +316,7 @@ import Segmented from './ui/Segmented.vue';
 import Stepper from './ui/Stepper.vue';
 import KeyBadge from './KeyBadge.vue';
 import { useFiltersStore } from '@/stores/filters.js';
+import { usePlayerStore } from '@/stores/player.js';
 import { useCratesStore } from '@/stores/crates.js';
 import { useUi } from '@/composables/useUi.js';
 import { formatTempo } from '@/lib/trackInfo.js';
@@ -295,6 +329,9 @@ const filters = useFiltersStore();
 const crates = useCratesStore();
 const ui = useUi();
 const seed = computed(() => filters.seedTrack);
+const player = usePlayerStore();
+const seedPlaying = computed(() => player.isPlaying(seed.value?.id));
+const seedLoading = computed(() => player.isLoading(seed.value?.id));
 // Reka toggle values are strings; the store keeps a boolean.
 const mode = computed({
   get: () => (filters.setMode ? 'set' : 'next'),
